@@ -222,6 +222,18 @@ export interface AppNotification {
   timestamp: string;
 }
 
+export interface StatusInfo {
+  runningAgents: number;
+  queuedAgents: number;
+  totalCostUsd: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  apiKeyValid: boolean;
+  apiKeyProvider: string;
+  activeAutomations: number;
+  nextAutomationRun: string | null;
+}
+
 // IPC invoke channel map: channel name -> [args tuple, return type]
 export interface IPCInvokeChannels {
   // Projects
@@ -314,6 +326,9 @@ export interface IPCInvokeChannels {
     args: [];
     return: { valid: boolean; provider: string };
   };
+
+  // Status
+  "status:getInfo": { args: []; return: StatusInfo };
 }
 
 // IPC event channel map (main -> renderer streaming)

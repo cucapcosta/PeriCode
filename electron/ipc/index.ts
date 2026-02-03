@@ -4,6 +4,7 @@ import { registerSettingsHandlers } from "./settings.ipc";
 import { registerWorktreeHandlers } from "./worktrees.ipc";
 import { registerSkillHandlers } from "./skills.ipc";
 import { registerAutomationHandlers } from "./automations.ipc";
+import { registerStatusHandlers } from "./status.ipc";
 
 export function registerAllIPCHandlers(): void {
   registerProjectHandlers();
@@ -12,4 +13,5 @@ export function registerAllIPCHandlers(): void {
   registerWorktreeHandlers();
   registerSkillHandlers();
   registerAutomationHandlers();
+  registerStatusHandlers();
 }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
+import { StatusBar } from "./components/layout/StatusBar";
 import { ThreadView } from "./components/agents/ThreadView";
 import { NewAgentDialog } from "./components/agents/NewAgentDialog";
 import { ProjectSettings } from "./components/settings/ProjectSettings";
@@ -63,7 +64,8 @@ export const App: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col h-full">
+      <div className="flex flex-1 min-h-0">
       <Sidebar />
 
       <div className="flex-1 flex flex-col">
@@ -177,6 +179,9 @@ export const App: React.FC = () => {
           </div>
         )}
       </div>
+      </div>
+
+      <StatusBar />
 
       <NewAgentDialog
         open={showNewAgent}

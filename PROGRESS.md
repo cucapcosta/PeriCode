@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 5 - Polish & UX
-- **Sub-step**: 5.1 Command Palette
+- **Sub-step**: 5.2 Status Bar
 - **Status**: completed
-- **Last iteration**: 21
+- **Last iteration**: 22
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -28,7 +28,7 @@
 - [x] 4.4 Automation Editor UI
 - [x] 4.5 Built-in Automation Templates
 - [x] 5.1 Command Palette
-- [ ] 5.2 Status Bar
+- [x] 5.2 Status Bar
 - [ ] 5.3 Settings & Preferences
 - [ ] 5.4 Keyboard Shortcuts
 - [ ] 5.5 Notification System
@@ -124,4 +124,8 @@
 - Category icons (>/# /@/*/~) and colors, keyboard navigation (up/down/enter/escape)
 - handleCommandAction callback for launch_agent and open_project actions
 - 42 tests passing
-- Next: 5.2 Status Bar
+- Phase 5.2: StatusBar.tsx with running agent count, session cost, token usage, API key status, automation count
+- status.ipc.ts: status:getInfo IPC handler aggregating orchestrator, scheduler, env data
+- StatusInfo type added to ipc.ts, preload whitelist updated
+- 42 tests passing
+- Next: 5.3 Settings & Preferences

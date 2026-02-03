@@ -46,6 +46,7 @@ const VALID_INVOKE_CHANNELS = new Set([
   "settings:get",
   "settings:update",
   "settings:getApiKeyStatus",
+  "status:getInfo",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([
