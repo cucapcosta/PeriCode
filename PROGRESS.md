@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 4.1 Automation Scheduler
+- **Sub-step**: 4.2 Automation Execution
 - **Status**: completed
-- **Last iteration**: 16
+- **Last iteration**: 17
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -23,7 +23,7 @@
 - [x] 3.4 Skills UI
 - [x] 3.5 Skill Invocation in Agent Threads
 - [x] 4.1 Automation Scheduler
-- [ ] 4.2 Automation Execution
+- [x] 4.2 Automation Execution
 - [ ] 4.3 Result Inbox (Triage Queue)
 - [ ] 4.4 Automation Editor UI
 - [ ] 4.5 Built-in Automation Templates
@@ -103,4 +103,8 @@
 - automations.ipc.ts: all automation IPC handlers (list, create, update, delete, trigger, toggleEnabled, getHistory, getInbox, markRead, archiveRun)
 - Registered in ipc/index.ts
 - 42 tests passing
-- Next: 4.2 Automation Execution
+- Phase 4.2: automation-executor.ts - worktree creation, skill loading, agent launch, result capture, notification
+- Sandbox policies: read-only, workspace-write, full
+- Hooks into scheduler triggered events for automated execution
+- 42 tests passing
+- Next: 4.3 Result Inbox (Triage Queue)
