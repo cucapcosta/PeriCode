@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 5 - Polish & UX
-- **Sub-step**: 5.4 Keyboard Shortcuts
+- **Sub-step**: 5.5 Notification System
 - **Status**: completed
-- **Last iteration**: 24
+- **Last iteration**: 25
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -31,7 +31,7 @@
 - [x] 5.2 Status Bar
 - [x] 5.3 Settings & Preferences
 - [x] 5.4 Keyboard Shortcuts
-- [ ] 5.5 Notification System
+- [x] 5.5 Notification System
 - [ ] 5.6 Embedded Terminal
 - [ ] 5.7 Export & Reporting
 
@@ -136,4 +136,9 @@
 - Sidebar toggle with Ctrl+B, thread switching with Ctrl+1-9
 - Shortcuts help dialog (Ctrl+/), Escape cascading (close modals then cancel agent)
 - 42 tests passing
-- Next: 5.5 Notification System
+- Phase 5.5: notification-service.ts (native OS + IPC forwarding), Toast.tsx (auto-dismiss stack), NotificationCenter.tsx (history panel)
+- Agent completed/failed events wired to notifications in main.ts
+- notification:getHistory and notification:clear IPC channels
+- Bell button in StatusBar opens NotificationCenter
+- 42 tests passing
+- Next: 5.6 Embedded Terminal

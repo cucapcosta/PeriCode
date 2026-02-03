@@ -5,6 +5,7 @@ import { storage } from "./services/storage";
 import { getDatabasePath } from "./utils/paths";
 import { logger } from "./utils/logger";
 import { agentOrchestrator } from "./services/agent-orchestrator";
+import { notificationService } from "./services/notification-service";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -64,6 +65,23 @@ app.whenReady().then(async () => {
   if (mainWindow) {
     agentOrchestrator.setMainWindow(mainWindow);
   }
+
+  // Wire up agent event notifications
+  agentOrchestrator.onEvent("completed", (event) => {
+    const thread = storage.getThread(event.threadId);
+    const title = thread?.title?.slice(0, 60) ?? "Agent";
+    notificationService.notify(
+      "success",
+      "Agent Completed",
+      `${title} finished ($${(event.costUsd ?? 0).toFixed(4)})`
+    );
+  });
+
+  agentOrchestrator.onEvent("failed", (event) => {
+    const thread = storage.getThread(event.threadId);
+    const title = thread?.title?.slice(0, 60) ?? "Agent";
+    notificationService.notify("error", "Agent Failed", `${title} encountered an error`);
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

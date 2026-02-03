@@ -341,6 +341,10 @@ export interface IPCInvokeChannels {
 
   // Status
   "status:getInfo": { args: []; return: StatusInfo };
+
+  // Notifications
+  "notification:getHistory": { args: []; return: AppNotification[] };
+  "notification:clear": { args: []; return: void };
 }
 
 // IPC event channel map (main -> renderer streaming)

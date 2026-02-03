@@ -1,8 +1,9 @@
 import { ipcMain } from "electron";
 import { agentOrchestrator } from "../services/agent-orchestrator";
 import { automationScheduler } from "../services/automation-scheduler";
+import { notificationService } from "../services/notification-service";
 import { storage } from "../services/storage";
-import type { StatusInfo } from "../../src/types/ipc";
+import type { StatusInfo, AppNotification } from "../../src/types/ipc";
 
 export function registerStatusHandlers(): void {
   ipcMain.handle("status:getInfo", (): StatusInfo => {
@@ -50,5 +51,13 @@ export function registerStatusHandlers(): void {
       activeAutomations,
       nextAutomationRun,
     };
+  });
+
+  ipcMain.handle("notification:getHistory", (): AppNotification[] => {
+    return notificationService.getHistory();
+  });
+
+  ipcMain.handle("notification:clear", (): void => {
+    notificationService.clearHistory();
   });
 }

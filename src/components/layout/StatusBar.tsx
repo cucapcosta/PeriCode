@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { ipc } from "@/lib/ipc-client";
 import type { StatusInfo } from "@/types/ipc";
 
-export const StatusBar: React.FC = () => {
+interface StatusBarProps {
+  onNotificationsClick?: () => void;
+}
+
+export const StatusBar: React.FC<StatusBarProps> = ({ onNotificationsClick }) => {
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -119,6 +123,17 @@ export const StatusBar: React.FC = () => {
             {status.apiKeyValid ? status.apiKeyProvider : "No API key"}
           </span>
         </div>
+
+        {/* Notifications */}
+        {onNotificationsClick && (
+          <button
+            onClick={onNotificationsClick}
+            className="hover:text-foreground transition-colors"
+            title="Notifications"
+          >
+            bell
+          </button>
+        )}
       </div>
     </div>
   );

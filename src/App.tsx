@@ -13,6 +13,8 @@ import { AutomationList } from "./components/automations/AutomationList";
 import { AutomationEditor } from "./components/automations/AutomationEditor";
 import { CommandBar, type CommandAction } from "./components/common/CommandBar";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
+import { ToastContainer } from "./components/common/Toast";
+import { NotificationCenter } from "./components/common/NotificationCenter";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
 import type { Skill, Automation } from "./types/ipc";
@@ -32,6 +34,7 @@ export const App: React.FC = () => {
   const [mainView, setMainView] = useState<MainView>("thread");
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const { activeProjectId } = useProjectStore();
   const { threads, activeThreadId, setActiveThread, cancelAgent } = useAgentStore();
 
@@ -257,7 +260,7 @@ export const App: React.FC = () => {
       </div>
       </div>
 
-      <StatusBar />
+      <StatusBar onNotificationsClick={() => setShowNotifications(true)} />
 
       <NewAgentDialog
         open={showNewAgent}
@@ -304,6 +307,13 @@ export const App: React.FC = () => {
       <SettingsPanel
         open={showAppSettings}
         onClose={() => setShowAppSettings(false)}
+      />
+
+      <ToastContainer />
+
+      <NotificationCenter
+        open={showNotifications}
+        onClose={() => setShowNotifications(false)}
       />
 
       {showShortcutsHelp && (
