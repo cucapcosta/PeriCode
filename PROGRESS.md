@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 2 - Multi-Agent & Worktrees
-- **Sub-step**: 2.3 Multi-Thread UI
+- **Sub-step**: 2.4 Diff Review Workflow
 - **Status**: completed
-- **Last iteration**: 9
+- **Last iteration**: 10
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -16,7 +16,7 @@
 - [x] 2.1 Git Worktree Manager
 - [x] 2.2 Agent Pool & Orchestration
 - [x] 2.3 Multi-Thread UI
-- [ ] 2.4 Diff Review Workflow
+- [x] 2.4 Diff Review Workflow
 - [ ] 3.1 Skill Definition Format
 - [ ] 3.2 Skills Engine
 - [ ] 3.3 Built-in Skills
@@ -70,4 +70,11 @@
 - AllAgentsDashboard.tsx: cross-project agent view with filter (all/running/completed/failed)
 - App.tsx: view mode toggle (Thread/All Agents/Split), split-view mode
 - 31 tests passing
-- Next: 2.4 Diff Review Workflow
+- Phase 2.4: DiffViewer with unified/split modes, FileTree, DiffActions (Accept All/Reject/Request Changes)
+- DiffViewer.tsx: full-screen diff review, file selection, open in editor
+- FileTree.tsx: changed files list with status icons (A/M/D/R), line counts
+- DiffActions.tsx: Accept All, Reject, Request Changes buttons
+- ThreadView updated with "View Diff" button when thread has worktree
+- Phase 2 COMPLETE - all 4 sub-steps done (2.1-2.4)
+- 31 tests passing
+- Next: 3.1 Skill Definition Format

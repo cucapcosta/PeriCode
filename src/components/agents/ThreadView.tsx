@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAgentStore } from "@/stores/agentStore";
+import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ipc } from "@/lib/ipc-client";
 import type { StreamMessage, MessageContent } from "@/types/ipc";
 
@@ -14,6 +15,7 @@ export const ThreadView: React.FC = () => {
     handleStatusChange,
   } = useAgentStore();
   const [input, setInput] = useState("");
+  const [showDiff, setShowDiff] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeThread = threads.find((t) => t.id === activeThreadId);
@@ -100,6 +102,14 @@ export const ThreadView: React.FC = () => {
         <h2 className="font-semibold text-foreground truncate flex-1">
           {activeThread.title || "Untitled Thread"}
         </h2>
+        {activeThread.worktreePath && (
+          <button
+            onClick={() => setShowDiff(true)}
+            className="px-3 py-1 rounded-lg border border-border text-xs text-foreground hover:bg-accent"
+          >
+            View Diff
+          </button>
+        )}
         <span className="text-xs text-muted-foreground capitalize">
           {activeThread.status}
         </span>
@@ -183,6 +193,13 @@ export const ThreadView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {showDiff && activeThread && (
+        <DiffViewer
+          thread={activeThread}
+          onClose={() => setShowDiff(false)}
+        />
+      )}
     </div>
   );
 };
