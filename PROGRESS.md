@@ -1,10 +1,10 @@
 # PeriCode Build Progress
 
 ## Current Status
-- **Phase**: Phase 3 - Skills System
-- **Sub-step**: 4.5 Built-in Automation Templates
+- **Phase**: Phase 5 - Polish & UX
+- **Sub-step**: 5.1 Command Palette
 - **Status**: completed
-- **Last iteration**: 20
+- **Last iteration**: 21
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -27,7 +27,7 @@
 - [x] 4.3 Result Inbox (Triage Queue)
 - [x] 4.4 Automation Editor UI
 - [x] 4.5 Built-in Automation Templates
-- [ ] 5.1 Command Palette
+- [x] 5.1 Command Palette
 - [ ] 5.2 Status Bar
 - [ ] 5.3 Settings & Preferences
 - [ ] 5.4 Keyboard Shortcuts
@@ -120,3 +120,8 @@
 - Phase 4 COMPLETE - all 5 sub-steps done (4.1-4.5)
 - 42 tests passing
 - Next: 5.1 Command Palette
+- Phase 5.1: CommandBar.tsx with Ctrl+K/Cmd+K global shortcut, fuzzy search across projects/threads/skills/automations
+- Category icons (>/# /@/*/~) and colors, keyboard navigation (up/down/enter/escape)
+- handleCommandAction callback for launch_agent and open_project actions
+- 42 tests passing
+- Next: 5.2 Status Bar

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ThreadView } from "./components/agents/ThreadView";
 import { NewAgentDialog } from "./components/agents/NewAgentDialog";
@@ -10,6 +10,7 @@ import { SkillInstaller } from "./components/skills/SkillInstaller";
 import { AutomationInbox } from "./components/automations/AutomationInbox";
 import { AutomationList } from "./components/automations/AutomationList";
 import { AutomationEditor } from "./components/automations/AutomationEditor";
+import { CommandBar, type CommandAction } from "./components/common/CommandBar";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
 import type { Skill, Automation } from "./types/ipc";
@@ -22,11 +23,35 @@ export const App: React.FC = () => {
   const [showSkillEditor, setShowSkillEditor] = useState(false);
   const [showSkillInstaller, setShowSkillInstaller] = useState(false);
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
+  const [showCommandBar, setShowCommandBar] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [mainView, setMainView] = useState<MainView>("thread");
   const { activeProjectId } = useProjectStore();
   const { activeThreadId } = useAgentStore();
+
+  // Global keyboard shortcut: Ctrl+K / Cmd+K for command palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setShowCommandBar((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const handleCommandAction = useCallback((action: CommandAction) => {
+    switch (action.type) {
+      case "launch_agent":
+        setShowNewAgent(true);
+        break;
+      case "open_project":
+        // Handled by project store
+        break;
+    }
+  }, []);
 
   const viewButtons: Array<{ key: MainView; label: string }> = [
     { key: "thread", label: "Thread" },
@@ -187,6 +212,12 @@ export const App: React.FC = () => {
           setEditingAutomation(null);
         }}
         editingAutomation={editingAutomation}
+      />
+
+      <CommandBar
+        open={showCommandBar}
+        onClose={() => setShowCommandBar(false)}
+        onAction={handleCommandAction}
       />
     </div>
   );
