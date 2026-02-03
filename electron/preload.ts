@@ -49,6 +49,11 @@ const VALID_INVOKE_CHANNELS = new Set([
   "status:getInfo",
   "notification:getHistory",
   "notification:clear",
+  "terminal:create",
+  "terminal:write",
+  "terminal:resize",
+  "terminal:destroy",
+  "terminal:list",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([
@@ -58,6 +63,8 @@ const VALID_EVENT_CHANNELS = new Set([
   "agent:cost",
   "automation:completed",
   "notification",
+  "terminal:data",
+  "terminal:exit",
 ]);
 
 const electronAPI = {

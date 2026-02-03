@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 5 - Polish & UX
-- **Sub-step**: 5.5 Notification System
+- **Sub-step**: 5.6 Embedded Terminal
 - **Status**: completed
-- **Last iteration**: 25
+- **Last iteration**: 26
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -32,7 +32,7 @@
 - [x] 5.3 Settings & Preferences
 - [x] 5.4 Keyboard Shortcuts
 - [x] 5.5 Notification System
-- [ ] 5.6 Embedded Terminal
+- [x] 5.6 Embedded Terminal
 - [ ] 5.7 Export & Reporting
 
 ## Notes
@@ -141,4 +141,10 @@
 - notification:getHistory and notification:clear IPC channels
 - Bell button in StatusBar opens NotificationCenter
 - 42 tests passing
-- Next: 5.6 Embedded Terminal
+- Phase 5.6: EmbeddedTerminal.tsx with @xterm/xterm + @xterm/addon-fit
+- terminal-service.ts: spawn shell (PowerShell/bash), pipe I/O over IPC
+- terminal.ipc.ts: create, write, resize, destroy, list handlers
+- Terminal view mode added to App.tsx with per-project terminal sessions
+- Terminal cleanup on app quit
+- 42 tests passing
+- Next: 5.7 Export & Reporting

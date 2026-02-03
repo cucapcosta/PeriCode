@@ -6,6 +6,7 @@ import { getDatabasePath } from "./utils/paths";
 import { logger } from "./utils/logger";
 import { agentOrchestrator } from "./services/agent-orchestrator";
 import { notificationService } from "./services/notification-service";
+import { terminalService } from "./services/terminal-service";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -97,5 +98,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  terminalService.shutdown();
   storage.close();
 });

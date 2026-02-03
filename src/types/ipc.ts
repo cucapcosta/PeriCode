@@ -345,6 +345,16 @@ export interface IPCInvokeChannels {
   // Notifications
   "notification:getHistory": { args: []; return: AppNotification[] };
   "notification:clear": { args: []; return: void };
+
+  // Terminal
+  "terminal:create": { args: [id: string, cwd: string]; return: void };
+  "terminal:write": { args: [id: string, data: string]; return: void };
+  "terminal:resize": {
+    args: [id: string, cols: number, rows: number];
+    return: void;
+  };
+  "terminal:destroy": { args: [id: string]; return: void };
+  "terminal:list": { args: []; return: string[] };
 }
 
 // IPC event channel map (main -> renderer streaming)
@@ -355,6 +365,8 @@ export interface IPCEventChannels {
   "agent:cost": [threadId: string, cost: CostUpdate];
   "automation:completed": [run: AutomationRun];
   notification: [notification: AppNotification];
+  "terminal:data": [id: string, data: string];
+  "terminal:exit": [id: string, code: string];
 }
 
 // Valid IPC channel names

@@ -15,11 +15,12 @@ import { CommandBar, type CommandAction } from "./components/common/CommandBar";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { ToastContainer } from "./components/common/Toast";
 import { NotificationCenter } from "./components/common/NotificationCenter";
+import { EmbeddedTerminal } from "./components/terminal/EmbeddedTerminal";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
 import type { Skill, Automation } from "./types/ipc";
 
-type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox" | "automations";
+type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox" | "automations" | "terminal";
 
 export const App: React.FC = () => {
   const [showNewAgent, setShowNewAgent] = useState(false);
@@ -35,7 +36,7 @@ export const App: React.FC = () => {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const { activeProjectId } = useProjectStore();
+  const { activeProjectId, projects } = useProjectStore();
   const { threads, activeThreadId, setActiveThread, cancelAgent } = useAgentStore();
 
   // Global keyboard shortcuts
@@ -133,6 +134,7 @@ export const App: React.FC = () => {
     { key: "skills", label: "Skills" },
     { key: "automations", label: "Auto" },
     { key: "inbox", label: "Inbox" },
+    { key: "terminal", label: "Term" },
   ];
 
   return (
@@ -205,7 +207,7 @@ export const App: React.FC = () => {
                   + New Automation
                 </button>
               )}
-              {mainView !== "skills" && mainView !== "inbox" && mainView !== "automations" && (
+              {mainView !== "skills" && mainView !== "inbox" && mainView !== "automations" && mainView !== "terminal" && (
                 <button
                   onClick={() => setShowNewAgent(true)}
                   className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
@@ -241,6 +243,19 @@ export const App: React.FC = () => {
             }}
           />
         )}
+        {mainView === "terminal" && (() => {
+          const activeProject = projects.find((p) => p.id === activeProjectId);
+          const termCwd = activeProject?.path ?? ".";
+          return (
+            <div className="flex-1 overflow-hidden">
+              <EmbeddedTerminal
+                id={`project-${activeProjectId ?? "default"}`}
+                cwd={termCwd}
+                onClose={() => setMainView("thread")}
+              />
+            </div>
+          );
+        })()}
         {mainView === "split" && (
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 border-r border-border overflow-hidden">
