@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 2 - Multi-Agent & Worktrees
-- **Sub-step**: 2.2 Agent Pool & Orchestration
+- **Sub-step**: 2.3 Multi-Thread UI
 - **Status**: completed
-- **Last iteration**: 8
+- **Last iteration**: 9
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -15,7 +15,7 @@
 - [x] 1.6 Project Management
 - [x] 2.1 Git Worktree Manager
 - [x] 2.2 Agent Pool & Orchestration
-- [ ] 2.3 Multi-Thread UI
+- [x] 2.3 Multi-Thread UI
 - [ ] 2.4 Diff Review Workflow
 - [ ] 3.1 Skill Definition Format
 - [ ] 3.2 Skills Engine
@@ -64,4 +64,10 @@
 - Events: onEvent/offEvent for launched/completed/failed/cancelled/queued/dequeued/cost_update
 - Worktree integration: auto-create worktree when useWorktree=true in AgentLaunchConfig
 - 31 tests passing
-- Next: 2.3 Multi-Thread UI
+- Phase 2.3: Multi-Thread UI with agent badges, quick actions, All Agents dashboard, split view
+- Sidebar: running agent count badges per project, animated status dots, quick cancel on hover
+- AgentCard.tsx: status card with project name, branch, cancel button
+- AllAgentsDashboard.tsx: cross-project agent view with filter (all/running/completed/failed)
+- App.tsx: view mode toggle (Thread/All Agents/Split), split-view mode
+- 31 tests passing
+- Next: 2.4 Diff Review Workflow

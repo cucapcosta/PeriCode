@@ -3,12 +3,18 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { ThreadView } from "./components/agents/ThreadView";
 import { NewAgentDialog } from "./components/agents/NewAgentDialog";
 import { ProjectSettings } from "./components/settings/ProjectSettings";
+import { AllAgentsDashboard } from "./components/agents/AllAgentsDashboard";
 import { useProjectStore } from "./stores/projectStore";
+import { useAgentStore } from "./stores/agentStore";
+
+type MainView = "thread" | "dashboard" | "split";
 
 export const App: React.FC = () => {
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [mainView, setMainView] = useState<MainView>("thread");
   const { activeProjectId } = useProjectStore();
+  const { activeThreadId } = useAgentStore();
 
   return (
     <div className="flex h-full">
@@ -18,12 +24,46 @@ export const App: React.FC = () => {
         {/* Top bar */}
         {activeProjectId && (
           <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-            <button
-              onClick={() => setShowProjectSettings(true)}
-              className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-            >
-              Settings
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowProjectSettings(true)}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+              >
+                Settings
+              </button>
+              <div className="flex rounded-lg border border-border overflow-hidden">
+                <button
+                  onClick={() => setMainView("thread")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    mainView === "thread"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  Thread
+                </button>
+                <button
+                  onClick={() => setMainView("dashboard")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+                    mainView === "dashboard"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  All Agents
+                </button>
+                <button
+                  onClick={() => setMainView("split")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+                    mainView === "split"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  Split
+                </button>
+              </div>
+            </div>
             <button
               onClick={() => setShowNewAgent(true)}
               className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
@@ -33,7 +73,25 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        <ThreadView />
+        {/* Main content area */}
+        {mainView === "thread" && <ThreadView />}
+        {mainView === "dashboard" && <AllAgentsDashboard />}
+        {mainView === "split" && (
+          <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 border-r border-border overflow-hidden">
+              <ThreadView />
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {activeThreadId ? (
+                <AllAgentsDashboard />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                  Select a thread to view
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <NewAgentDialog
