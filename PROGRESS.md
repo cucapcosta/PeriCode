@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 2 - Multi-Agent & Worktrees
-- **Sub-step**: 2.4 Diff Review Workflow
+- **Sub-step**: 3.1 Skill Definition Format
 - **Status**: completed
-- **Last iteration**: 10
+- **Last iteration**: 11
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -17,7 +17,7 @@
 - [x] 2.2 Agent Pool & Orchestration
 - [x] 2.3 Multi-Thread UI
 - [x] 2.4 Diff Review Workflow
-- [ ] 3.1 Skill Definition Format
+- [x] 3.1 Skill Definition Format
 - [ ] 3.2 Skills Engine
 - [ ] 3.3 Built-in Skills
 - [ ] 3.4 Skills UI
@@ -77,4 +77,9 @@
 - ThreadView updated with "View Diff" button when thread has worktree
 - Phase 2 COMPLETE - all 4 sub-steps done (2.1-2.4)
 - 31 tests passing
-- Next: 3.1 Skill Definition Format
+- Phase 3.1: SKILL.md format with YAML frontmatter parser
+- skill-parser.ts: parseSkillMd, loadSkillFile, writeSkillFile, scanSkillsDirectory
+- 4 built-in skills: code-review, test-generator, refactor, documentation
+- 9 parser tests (parsing, loading, writing, scanning)
+- 40 tests passing
+- Next: 3.2 Skills Engine
