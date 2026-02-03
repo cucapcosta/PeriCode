@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 4.2 Automation Execution
+- **Sub-step**: 4.3 Result Inbox (Triage Queue)
 - **Status**: completed
-- **Last iteration**: 17
+- **Last iteration**: 18
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -24,7 +24,7 @@
 - [x] 3.5 Skill Invocation in Agent Threads
 - [x] 4.1 Automation Scheduler
 - [x] 4.2 Automation Execution
-- [ ] 4.3 Result Inbox (Triage Queue)
+- [x] 4.3 Result Inbox (Triage Queue)
 - [ ] 4.4 Automation Editor UI
 - [ ] 4.5 Built-in Automation Templates
 - [ ] 5.1 Command Palette
@@ -107,4 +107,7 @@
 - Sandbox policies: read-only, workspace-write, full
 - Hooks into scheduler triggered events for automated execution
 - 42 tests passing
-- Next: 4.3 Result Inbox (Triage Queue)
+- Phase 4.3: AutomationInbox.tsx with status filtering, unread badges, mark read/archive, expandable conversation logs
+- Inbox view added to App.tsx view mode toggle
+- 42 tests passing
+- Next: 4.4 Automation Editor UI

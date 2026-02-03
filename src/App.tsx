@@ -7,11 +7,12 @@ import { AllAgentsDashboard } from "./components/agents/AllAgentsDashboard";
 import { SkillBrowser } from "./components/skills/SkillBrowser";
 import { SkillEditor } from "./components/skills/SkillEditor";
 import { SkillInstaller } from "./components/skills/SkillInstaller";
+import { AutomationInbox } from "./components/automations/AutomationInbox";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
 import type { Skill } from "./types/ipc";
 
-type MainView = "thread" | "dashboard" | "split" | "skills";
+type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox";
 
 export const App: React.FC = () => {
   const [showNewAgent, setShowNewAgent] = useState(false);
@@ -79,6 +80,16 @@ export const App: React.FC = () => {
                 >
                   Skills
                 </button>
+                <button
+                  onClick={() => setMainView("inbox")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+                    mainView === "inbox"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  Inbox
+                </button>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -101,7 +112,7 @@ export const App: React.FC = () => {
                   </button>
                 </>
               )}
-              {mainView !== "skills" && (
+              {mainView !== "skills" && mainView !== "inbox" && (
                 <button
                   onClick={() => setShowNewAgent(true)}
                   className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
@@ -116,6 +127,7 @@ export const App: React.FC = () => {
         {/* Main content area */}
         {mainView === "thread" && <ThreadView />}
         {mainView === "dashboard" && <AllAgentsDashboard />}
+        {mainView === "inbox" && <AutomationInbox />}
         {mainView === "skills" && (
           <SkillBrowser
             onEdit={(skill) => {
