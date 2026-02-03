@@ -1,24 +1,37 @@
-import React from "react";
+import React, { useState } from "react";
+import { Sidebar } from "./components/layout/Sidebar";
+import { ThreadView } from "./components/agents/ThreadView";
+import { NewAgentDialog } from "./components/agents/NewAgentDialog";
+import { useProjectStore } from "./stores/projectStore";
 
 export const App: React.FC = () => {
+  const [showNewAgent, setShowNewAgent] = useState(false);
+  const { activeProjectId } = useProjectStore();
+
   return (
     <div className="flex h-full">
-      <aside className="w-64 border-r border-border bg-card p-4">
-        <h1 className="text-lg font-bold text-foreground">PeriCode</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Multi-agent command center
-        </p>
-      </aside>
-      <main className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-foreground">
-            Welcome to PeriCode
-          </h2>
-          <p className="mt-2 text-muted-foreground">
-            Open a project to get started
-          </p>
-        </div>
-      </main>
+      <Sidebar />
+
+      <div className="flex-1 flex flex-col">
+        {/* Top bar */}
+        {activeProjectId && (
+          <div className="flex items-center justify-end px-4 py-2 border-b border-border">
+            <button
+              onClick={() => setShowNewAgent(true)}
+              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+            >
+              + New Agent
+            </button>
+          </div>
+        )}
+
+        <ThreadView />
+      </div>
+
+      <NewAgentDialog
+        open={showNewAgent}
+        onClose={() => setShowNewAgent(false)}
+      />
     </div>
   );
 };

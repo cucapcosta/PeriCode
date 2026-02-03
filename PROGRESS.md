@@ -2,16 +2,16 @@
 
 ## Current Status
 - **Phase**: Phase 1 - Foundation (Scaffold + Single Agent)
-- **Sub-step**: 1.4 Single Agent Integration
+- **Sub-step**: 1.5 Basic Chat UI
 - **Status**: completed
-- **Last iteration**: 4
+- **Last iteration**: 5
 
 ## Completed
 - [x] 1.1 Project Scaffolding
 - [x] 1.2 Electron Shell
 - [x] 1.3 Storage Layer
 - [x] 1.4 Single Agent Integration
-- [ ] 1.5 Basic Chat UI
+- [x] 1.5 Basic Chat UI
 - [ ] 1.6 Project Management
 - [ ] 2.1 Git Worktree Manager
 - [ ] 2.2 Agent Pool & Orchestration
@@ -42,5 +42,9 @@
 - Agents IPC handlers wired to real orchestrator (launch, cancel, sendMessage, getRunning)
 - Thread IPC handlers added (list, get, getMessages, delete)
 - Stream events forwarded to renderer: text chunks, tool calls, cost, status
-- 24 tests passing (App: 2, Storage: 14, Session Registry: 8)
-- Next: 1.5 Basic Chat UI (Sidebar, ThreadList, ThreadView, NewAgentDialog)
+- 25 tests passing (App: 3, Storage: 14, Session Registry: 8)
+- Phase 1.5 UI components: Sidebar, ThreadView, NewAgentDialog
+- Zustand stores: projectStore (projects, activeProject), agentStore (threads, messages, streaming)
+- IPC event listeners for agent:message and agent:status streaming
+- Auto-scroll, status indicators, streaming cursor animation
+- Next: 1.6 Project Management (open folder dialog, git detection, ProjectSettings)
