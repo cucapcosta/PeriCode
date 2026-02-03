@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 4.3 Result Inbox (Triage Queue)
+- **Sub-step**: 4.4 Automation Editor UI
 - **Status**: completed
-- **Last iteration**: 18
+- **Last iteration**: 19
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -25,7 +25,7 @@
 - [x] 4.1 Automation Scheduler
 - [x] 4.2 Automation Execution
 - [x] 4.3 Result Inbox (Triage Queue)
-- [ ] 4.4 Automation Editor UI
+- [x] 4.4 Automation Editor UI
 - [ ] 4.5 Built-in Automation Templates
 - [ ] 5.1 Command Palette
 - [ ] 5.2 Status Bar
@@ -110,4 +110,8 @@
 - Phase 4.3: AutomationInbox.tsx with status filtering, unread badges, mark read/archive, expandable conversation logs
 - Inbox view added to App.tsx view mode toggle
 - 42 tests passing
-- Next: 4.4 Automation Editor UI
+- Phase 4.4: AutomationEditor.tsx (trigger config, cron presets, template vars, skill selector, sandbox policy)
+- AutomationList.tsx: list with enable/disable toggle, run now, edit, delete
+- App.tsx: Automations view with editor dialog, refactored view buttons
+- 42 tests passing
+- Next: 4.5 Built-in Automation Templates

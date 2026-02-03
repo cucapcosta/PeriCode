@@ -8,21 +8,34 @@ import { SkillBrowser } from "./components/skills/SkillBrowser";
 import { SkillEditor } from "./components/skills/SkillEditor";
 import { SkillInstaller } from "./components/skills/SkillInstaller";
 import { AutomationInbox } from "./components/automations/AutomationInbox";
+import { AutomationList } from "./components/automations/AutomationList";
+import { AutomationEditor } from "./components/automations/AutomationEditor";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
-import type { Skill } from "./types/ipc";
+import type { Skill, Automation } from "./types/ipc";
 
-type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox";
+type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox" | "automations";
 
 export const App: React.FC = () => {
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [showSkillEditor, setShowSkillEditor] = useState(false);
   const [showSkillInstaller, setShowSkillInstaller] = useState(false);
+  const [showAutomationEditor, setShowAutomationEditor] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [mainView, setMainView] = useState<MainView>("thread");
   const { activeProjectId } = useProjectStore();
   const { activeThreadId } = useAgentStore();
+
+  const viewButtons: Array<{ key: MainView; label: string }> = [
+    { key: "thread", label: "Thread" },
+    { key: "dashboard", label: "Agents" },
+    { key: "split", label: "Split" },
+    { key: "skills", label: "Skills" },
+    { key: "automations", label: "Auto" },
+    { key: "inbox", label: "Inbox" },
+  ];
 
   return (
     <div className="flex h-full">
@@ -40,56 +53,19 @@ export const App: React.FC = () => {
                 Settings
               </button>
               <div className="flex rounded-lg border border-border overflow-hidden">
-                <button
-                  onClick={() => setMainView("thread")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    mainView === "thread"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  Thread
-                </button>
-                <button
-                  onClick={() => setMainView("dashboard")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
-                    mainView === "dashboard"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  All Agents
-                </button>
-                <button
-                  onClick={() => setMainView("split")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
-                    mainView === "split"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  Split
-                </button>
-                <button
-                  onClick={() => setMainView("skills")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
-                    mainView === "skills"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  Skills
-                </button>
-                <button
-                  onClick={() => setMainView("inbox")}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
-                    mainView === "inbox"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  }`}
-                >
-                  Inbox
-                </button>
+                {viewButtons.map((btn, i) => (
+                  <button
+                    key={btn.key}
+                    onClick={() => setMainView(btn.key)}
+                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                      mainView === btn.key
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    } ${i > 0 ? "border-l border-border" : ""}`}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -112,7 +88,18 @@ export const App: React.FC = () => {
                   </button>
                 </>
               )}
-              {mainView !== "skills" && mainView !== "inbox" && (
+              {mainView === "automations" && (
+                <button
+                  onClick={() => {
+                    setEditingAutomation(null);
+                    setShowAutomationEditor(true);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+                >
+                  + New Automation
+                </button>
+              )}
+              {mainView !== "skills" && mainView !== "inbox" && mainView !== "automations" && (
                 <button
                   onClick={() => setShowNewAgent(true)}
                   className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
@@ -128,6 +115,18 @@ export const App: React.FC = () => {
         {mainView === "thread" && <ThreadView />}
         {mainView === "dashboard" && <AllAgentsDashboard />}
         {mainView === "inbox" && <AutomationInbox />}
+        {mainView === "automations" && (
+          <AutomationList
+            onEdit={(auto) => {
+              setEditingAutomation(auto);
+              setShowAutomationEditor(true);
+            }}
+            onNewAutomation={() => {
+              setEditingAutomation(null);
+              setShowAutomationEditor(true);
+            }}
+          />
+        )}
         {mainView === "skills" && (
           <SkillBrowser
             onEdit={(skill) => {
@@ -179,6 +178,15 @@ export const App: React.FC = () => {
       <SkillInstaller
         open={showSkillInstaller}
         onClose={() => setShowSkillInstaller(false)}
+      />
+
+      <AutomationEditor
+        open={showAutomationEditor}
+        onClose={() => {
+          setShowAutomationEditor(false);
+          setEditingAutomation(null);
+        }}
+        editingAutomation={editingAutomation}
       />
     </div>
   );
