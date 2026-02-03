@@ -1,10 +1,10 @@
 # PeriCode Build Progress
 
 ## Current Status
-- **Phase**: Phase 2 - Multi-Agent & Worktrees
-- **Sub-step**: 3.1 Skill Definition Format
+- **Phase**: Phase 3 - Skills System
+- **Sub-step**: 3.2 Skills Engine
 - **Status**: completed
-- **Last iteration**: 11
+- **Last iteration**: 12
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -18,7 +18,7 @@
 - [x] 2.3 Multi-Thread UI
 - [x] 2.4 Diff Review Workflow
 - [x] 3.1 Skill Definition Format
-- [ ] 3.2 Skills Engine
+- [x] 3.2 Skills Engine
 - [ ] 3.3 Built-in Skills
 - [ ] 3.4 Skills UI
 - [ ] 3.5 Skill Invocation in Agent Threads
@@ -82,4 +82,8 @@
 - 4 built-in skills: code-review, test-generator, refactor, documentation
 - 9 parser tests (parsing, loading, writing, scanning)
 - 40 tests passing
-- Next: 3.2 Skills Engine
+- Phase 3.2: skills-engine.ts (loadAll, resolve, match, invoke, getDetail, create, update, delete)
+- skills.ipc.ts: IPC handlers for skill:list, get, create, update, delete, export, import
+- Registered skill handlers in ipc/index.ts
+- 40 tests passing
+- Next: 3.3 Built-in Skills
