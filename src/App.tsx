@@ -15,9 +15,12 @@ import { CommandBar, type CommandAction } from "./components/common/CommandBar";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { ToastContainer } from "./components/common/Toast";
 import { NotificationCenter } from "./components/common/NotificationCenter";
-import { EmbeddedTerminal } from "./components/terminal/EmbeddedTerminal";
+const EmbeddedTerminal = React.lazy(() =>
+  import("./components/terminal/EmbeddedTerminal").then((m) => ({ default: m.EmbeddedTerminal }))
+);
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
+import { ipc } from "./lib/ipc-client";
 import type { Skill, Automation } from "./types/ipc";
 
 type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox" | "automations" | "terminal";
@@ -215,6 +218,38 @@ export const App: React.FC = () => {
                   + New Agent
                 </button>
               )}
+              {/* Export actions */}
+              {mainView === "thread" && activeThreadId && (
+                <button
+                  onClick={() => {
+                    ipc.invoke("export:threadMarkdown", activeThreadId).catch(console.error);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+                >
+                  Export MD
+                </button>
+              )}
+              {mainView === "automations" && activeProjectId && (
+                <button
+                  onClick={() => {
+                    ipc.invoke("export:automationCsv", activeProjectId).catch(console.error);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+                >
+                  Export CSV
+                </button>
+              )}
+              {activeProjectId && (
+                <button
+                  onClick={() => {
+                    ipc.invoke("export:costReport", activeProjectId).catch(console.error);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+                  title="Export cost report"
+                >
+                  Costs
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -248,11 +283,13 @@ export const App: React.FC = () => {
           const termCwd = activeProject?.path ?? ".";
           return (
             <div className="flex-1 overflow-hidden">
-              <EmbeddedTerminal
-                id={`project-${activeProjectId ?? "default"}`}
-                cwd={termCwd}
-                onClose={() => setMainView("thread")}
-              />
+              <React.Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">Loading terminal...</div>}>
+                <EmbeddedTerminal
+                  id={`project-${activeProjectId ?? "default"}`}
+                  cwd={termCwd}
+                  onClose={() => setMainView("thread")}
+                />
+              </React.Suspense>
             </div>
           );
         })()}

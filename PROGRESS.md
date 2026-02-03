@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 5 - Polish & UX
-- **Sub-step**: 5.6 Embedded Terminal
+- **Sub-step**: 5.7 Export & Reporting
 - **Status**: completed
-- **Last iteration**: 26
+- **Last iteration**: 27
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -33,7 +33,7 @@
 - [x] 5.4 Keyboard Shortcuts
 - [x] 5.5 Notification System
 - [x] 5.6 Embedded Terminal
-- [ ] 5.7 Export & Reporting
+- [x] 5.7 Export & Reporting
 
 ## Notes
 - @anthropic-ai/claude-agent-sdk installed and integrated
@@ -147,4 +147,10 @@
 - Terminal view mode added to App.tsx with per-project terminal sessions
 - Terminal cleanup on app quit
 - 42 tests passing
-- Next: 5.7 Export & Reporting
+- Phase 5.7: export-service.ts with exportThreadAsMarkdown, exportDiffAsPatch, exportAutomationHistoryAsCsv, exportCostReport
+- export.ipc.ts: 4 export IPC handlers with save dialog integration
+- Export buttons in top bar: Export MD (thread), Export CSV (automations), Costs (cost report)
+- Lazy-loaded EmbeddedTerminal to avoid xterm canvas issues in tests
+- Phase 5 COMPLETE - all 7 sub-steps done (5.1-5.7)
+- ALL 5 PHASES COMPLETE (1.1-5.7, 22 sub-steps total)
+- 42 tests passing

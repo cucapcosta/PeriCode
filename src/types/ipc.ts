@@ -355,6 +355,12 @@ export interface IPCInvokeChannels {
   };
   "terminal:destroy": { args: [id: string]; return: void };
   "terminal:list": { args: []; return: string[] };
+
+  // Export
+  "export:threadMarkdown": { args: [threadId: string]; return: string | null };
+  "export:diffPatch": { args: [threadId: string]; return: string | null };
+  "export:automationCsv": { args: [projectId: string]; return: string | null };
+  "export:costReport": { args: [projectId: string]; return: string | null };
 }
 
 // IPC event channel map (main -> renderer streaming)

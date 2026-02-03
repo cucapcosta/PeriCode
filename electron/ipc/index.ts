@@ -6,6 +6,7 @@ import { registerSkillHandlers } from "./skills.ipc";
 import { registerAutomationHandlers } from "./automations.ipc";
 import { registerStatusHandlers } from "./status.ipc";
 import { registerTerminalHandlers } from "./terminal.ipc";
+import { registerExportHandlers } from "./export.ipc";
 
 export function registerAllIPCHandlers(): void {
   registerProjectHandlers();
@@ -16,4 +17,5 @@ export function registerAllIPCHandlers(): void {
   registerAutomationHandlers();
   registerStatusHandlers();
   registerTerminalHandlers();
+  registerExportHandlers();
 }

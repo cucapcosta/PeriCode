@@ -54,6 +54,10 @@ const VALID_INVOKE_CHANNELS = new Set([
   "terminal:resize",
   "terminal:destroy",
   "terminal:list",
+  "export:threadMarkdown",
+  "export:diffPatch",
+  "export:automationCsv",
+  "export:costReport",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([
