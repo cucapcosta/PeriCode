@@ -1,0 +1,51 @@
+{
+  "name": "pericode",
+  "version": "0.1.0",
+  "description": "A desktop command center wrapping Claude Code with multi-agent workflows",
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"electron/**/*.ts\""
+  },
+  "keywords": ["electron", "claude", "ai", "coding", "agent"],
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.6.0",
+    "@electron-forge/maker-squirrel": "^7.6.0",
+    "@electron-forge/maker-zip": "^7.6.0",
+    "@electron-forge/plugin-vite": "^7.6.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.0.0",
+    "eslint": "^9.17.0",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "eslint-config-prettier": "^9.1.0",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "prettier": "^3.4.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "simple-git": "^3.27.0",
+    "uuid": "^11.0.0",
+    "zustand": "^5.0.0"
+  }
+}
