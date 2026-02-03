@@ -4,6 +4,7 @@ import { registerAllIPCHandlers } from "./ipc";
 import { storage } from "./services/storage";
 import { getDatabasePath } from "./utils/paths";
 import { logger } from "./utils/logger";
+import { agentOrchestrator } from "./services/agent-orchestrator";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -59,6 +60,10 @@ app.whenReady().then(async () => {
 
   registerAllIPCHandlers();
   createWindow();
+
+  if (mainWindow) {
+    agentOrchestrator.setMainWindow(mainWindow);
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

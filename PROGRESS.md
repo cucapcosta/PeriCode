@@ -2,15 +2,15 @@
 
 ## Current Status
 - **Phase**: Phase 1 - Foundation (Scaffold + Single Agent)
-- **Sub-step**: 1.3 Storage Layer
+- **Sub-step**: 1.4 Single Agent Integration
 - **Status**: completed
-- **Last iteration**: 3
+- **Last iteration**: 4
 
 ## Completed
 - [x] 1.1 Project Scaffolding
 - [x] 1.2 Electron Shell
 - [x] 1.3 Storage Layer
-- [ ] 1.4 Single Agent Integration
+- [x] 1.4 Single Agent Integration
 - [ ] 1.5 Basic Chat UI
 - [ ] 1.6 Project Management
 - [ ] 2.1 Git Worktree Manager
@@ -36,11 +36,11 @@
 - [ ] 5.7 Export & Reporting
 
 ## Notes
-- Using sql.js (pure JS/WASM SQLite) instead of better-sqlite3 due to no VS Build Tools
-- Full database schema with all 7 tables + indexes matching PLAN.md spec
-- CRUD operations for: projects, threads, messages, skills, automations, automation_runs, app_settings
-- IPC handlers now wired to storage service (not in-memory)
-- 14 storage tests + 2 app tests = 16 tests all passing
-- Database persists to disk via sql.js export/import
-- main.ts initializes storage on app ready, closes on before-quit
-- Next: 1.4 Single Agent Integration (Claude Agent SDK)
+- @anthropic-ai/claude-agent-sdk installed and integrated
+- agent-orchestrator.ts: launch, cancel, sendMessage with streaming via IPC
+- session-registry.ts: maps thread IDs to Claude session IDs for resume/fork
+- Agents IPC handlers wired to real orchestrator (launch, cancel, sendMessage, getRunning)
+- Thread IPC handlers added (list, get, getMessages, delete)
+- Stream events forwarded to renderer: text chunks, tool calls, cost, status
+- 24 tests passing (App: 2, Storage: 14, Session Registry: 8)
+- Next: 1.5 Basic Chat UI (Sidebar, ThreadList, ThreadView, NewAgentDialog)
