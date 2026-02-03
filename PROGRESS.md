@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 5 - Polish & UX
-- **Sub-step**: 5.3 Settings & Preferences
+- **Sub-step**: 5.4 Keyboard Shortcuts
 - **Status**: completed
-- **Last iteration**: 23
+- **Last iteration**: 24
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -30,7 +30,7 @@
 - [x] 5.1 Command Palette
 - [x] 5.2 Status Bar
 - [x] 5.3 Settings & Preferences
-- [ ] 5.4 Keyboard Shortcuts
+- [x] 5.4 Keyboard Shortcuts
 - [ ] 5.5 Notification System
 - [ ] 5.6 Embedded Terminal
 - [ ] 5.7 Export & Reporting
@@ -132,4 +132,8 @@
 - Extended AppSettings with defaultTools, permissionMode, defaultSandboxPolicy, automationsEnabled, notifications, skillDirectories
 - Ctrl+, shortcut for app settings, separate Project/Settings buttons in top bar
 - 42 tests passing
-- Next: 5.4 Keyboard Shortcuts
+- Phase 5.4: Comprehensive keyboard shortcuts (Ctrl+K/N/B/,///1-9, Ctrl+Shift+A/D, Escape)
+- Sidebar toggle with Ctrl+B, thread switching with Ctrl+1-9
+- Shortcuts help dialog (Ctrl+/), Escape cascading (close modals then cancel agent)
+- 42 tests passing
+- Next: 5.5 Notification System

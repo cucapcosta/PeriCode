@@ -30,24 +30,87 @@ export const App: React.FC = () => {
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [mainView, setMainView] = useState<MainView>("thread");
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const { activeProjectId } = useProjectStore();
-  const { activeThreadId } = useAgentStore();
+  const { threads, activeThreadId, setActiveThread, cancelAgent } = useAgentStore();
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      const mod = e.ctrlKey || e.metaKey;
+
+      // Cmd+K: Command palette
+      if (mod && e.key === "k") {
         e.preventDefault();
         setShowCommandBar((prev) => !prev);
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      // Cmd+,: App settings
+      if (mod && e.key === ",") {
         e.preventDefault();
         setShowAppSettings((prev) => !prev);
+        return;
+      }
+      // Cmd+N: New agent
+      if (mod && e.key === "n" && !e.shiftKey) {
+        e.preventDefault();
+        setShowNewAgent(true);
+        return;
+      }
+      // Cmd+B: Toggle sidebar
+      if (mod && e.key === "b") {
+        e.preventDefault();
+        setSidebarVisible((prev) => !prev);
+        return;
+      }
+      // Cmd+Shift+A: All agents dashboard
+      if (mod && e.shiftKey && e.key === "A") {
+        e.preventDefault();
+        setMainView("dashboard");
+        return;
+      }
+      // Cmd+Shift+D: Toggle diff (split) view
+      if (mod && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        setMainView((prev) => (prev === "split" ? "thread" : "split"));
+        return;
+      }
+      // Cmd+/: Show keyboard shortcuts help
+      if (mod && e.key === "/") {
+        e.preventDefault();
+        setShowShortcutsHelp((prev) => !prev);
+        return;
+      }
+      // Cmd+1..9: Switch between threads
+      if (mod && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        const index = Number(e.key) - 1;
+        if (index < threads.length) {
+          setActiveThread(threads[index].id);
+          setMainView("thread");
+        }
+        return;
+      }
+      // Escape: Cancel current agent or close modals
+      if (e.key === "Escape") {
+        if (showCommandBar) { setShowCommandBar(false); return; }
+        if (showAppSettings) { setShowAppSettings(false); return; }
+        if (showNewAgent) { setShowNewAgent(false); return; }
+        if (showShortcutsHelp) { setShowShortcutsHelp(false); return; }
+        // Cancel the active running agent
+        if (activeThreadId) {
+          const activeThread = threads.find((t) => t.id === activeThreadId);
+          if (activeThread?.status === "running") {
+            cancelAgent(activeThreadId);
+          }
+        }
+        return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [threads, activeThreadId, showCommandBar, showAppSettings, showNewAgent, showShortcutsHelp, setActiveThread, cancelAgent]);
 
   const handleCommandAction = useCallback((action: CommandAction) => {
     switch (action.type) {
@@ -72,7 +135,7 @@ export const App: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-1 min-h-0">
-      <Sidebar />
+      {sidebarVisible && <Sidebar />}
 
       <div className="flex-1 flex flex-col">
         {/* Top bar */}
@@ -242,6 +305,42 @@ export const App: React.FC = () => {
         open={showAppSettings}
         onClose={() => setShowAppSettings(false)}
       />
+
+      {showShortcutsHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={() => setShowShortcutsHelp(false)} />
+          <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-lg font-semibold text-foreground mb-4">Keyboard Shortcuts</h2>
+            <div className="space-y-2 text-sm">
+              {[
+                ["Ctrl+K", "Command palette"],
+                ["Ctrl+N", "New agent thread"],
+                ["Ctrl+B", "Toggle sidebar"],
+                ["Ctrl+,", "App settings"],
+                ["Ctrl+/", "Shortcuts help"],
+                ["Ctrl+1-9", "Switch threads"],
+                ["Ctrl+Shift+A", "All agents dashboard"],
+                ["Ctrl+Shift+D", "Toggle split view"],
+                ["Ctrl+Enter", "Send message"],
+                ["Escape", "Close dialog / cancel agent"],
+              ].map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{desc}</span>
+                  <kbd className="px-2 py-0.5 rounded border border-border bg-background text-xs font-mono text-foreground">
+                    {key}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowShortcutsHelp(false)}
+              className="mt-4 w-full px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
