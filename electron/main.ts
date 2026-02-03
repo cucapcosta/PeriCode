@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from "electron";
 import path from "path";
+import { registerAllIPCHandlers } from "./ipc";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -18,12 +19,18 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     title: "PeriCode",
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+
+  // Show window when ready to prevent visual flash
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -40,6 +47,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerAllIPCHandlers();
   createWindow();
 
   app.on("activate", () => {

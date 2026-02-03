@@ -2,13 +2,13 @@
 
 ## Current Status
 - **Phase**: Phase 1 - Foundation (Scaffold + Single Agent)
-- **Sub-step**: 1.1 Project Scaffolding
+- **Sub-step**: 1.2 Electron Shell
 - **Status**: completed
-- **Last iteration**: 1
+- **Last iteration**: 2
 
 ## Completed
 - [x] 1.1 Project Scaffolding
-- [ ] 1.2 Electron Shell
+- [x] 1.2 Electron Shell
 - [ ] 1.3 Storage Layer
 - [ ] 1.4 Single Agent Integration
 - [ ] 1.5 Basic Chat UI
@@ -36,10 +36,12 @@
 - [ ] 5.7 Export & Reporting
 
 ## Notes
-- Replaced `better-sqlite3` with plan to use it later when VS Build Tools are available,
-  or use `sql.js` (pure JS WebAssembly SQLite) as alternative. No native modules for now.
-- Electron Forge + Vite + React 19 + TypeScript strict + Tailwind CSS + Vitest all configured
-- Basic App component renders with sidebar layout and welcome screen
-- 2 tests passing (App render + sidebar)
-- `npm run build` (tsc --noEmit) passes clean
-- Next: 1.2 Electron Shell (full preload, IPC contracts, window management)
+- Full IPC type contract defined in src/types/ipc.ts with all channel definitions
+- Preload script validates channels against whitelist for security
+- Type-safe ipc-client wrapper in renderer provides compile-time channel checking
+- IPC handlers registered for projects, agents, and settings (in-memory for now)
+- useIPCInvoke and useIPCEvent hooks created for React components
+- Logger and paths utilities created for main process
+- Window uses show:false + ready-to-show pattern to prevent flash
+- No native modules (better-sqlite3 deferred) - no VS Build Tools on this machine
+- Next: 1.3 Storage Layer (SQLite database, schema, CRUD operations)
