@@ -177,6 +177,15 @@ export interface AppSettings {
   logLevel: "debug" | "info" | "warn" | "error";
 }
 
+export interface ProjectDetectionInfo {
+  isGitRepo: boolean;
+  hasClaudeMd: boolean;
+  hasAgentsMd: boolean;
+  claudeMdContent: string | null;
+  agentsMdContent: string | null;
+  defaultBranch: string | null;
+}
+
 export interface AppNotification {
   id: string;
   type: "info" | "success" | "warning" | "error";
@@ -195,6 +204,11 @@ export interface IPCInvokeChannels {
   "project:updateSettings": {
     args: [id: string, settings: Partial<ProjectSettings>];
     return: void;
+  };
+  "project:openFolder": { args: []; return: Project | null };
+  "project:detectInfo": {
+    args: [projectId: string];
+    return: ProjectDetectionInfo;
   };
 
   // Agents

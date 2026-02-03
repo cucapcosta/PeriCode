@@ -8,6 +8,7 @@ interface ProjectState {
   loading: boolean;
   loadProjects: () => Promise<void>;
   addProject: (path: string) => Promise<Project>;
+  openFolder: () => Promise<Project | null>;
   removeProject: (id: string) => Promise<void>;
   setActiveProject: (id: string | null) => void;
 }
@@ -33,6 +34,20 @@ export const useProjectStore = create<ProjectState>((set) => ({
       projects: [project, ...state.projects],
       activeProjectId: project.id,
     }));
+    return project;
+  },
+
+  openFolder: async () => {
+    const project = await ipc.invoke("project:openFolder");
+    if (project) {
+      set((state) => {
+        const exists = state.projects.some((p) => p.id === project.id);
+        return {
+          projects: exists ? state.projects : [project, ...state.projects],
+          activeProjectId: project.id,
+        };
+      });
+    }
     return project;
   },
 

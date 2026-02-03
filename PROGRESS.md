@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 1 - Foundation (Scaffold + Single Agent)
-- **Sub-step**: 1.5 Basic Chat UI
+- **Sub-step**: 1.6 Project Management
 - **Status**: completed
-- **Last iteration**: 5
+- **Last iteration**: 6
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -12,7 +12,7 @@
 - [x] 1.3 Storage Layer
 - [x] 1.4 Single Agent Integration
 - [x] 1.5 Basic Chat UI
-- [ ] 1.6 Project Management
+- [x] 1.6 Project Management
 - [ ] 2.1 Git Worktree Manager
 - [ ] 2.2 Agent Pool & Orchestration
 - [ ] 2.3 Multi-Thread UI
@@ -47,4 +47,9 @@
 - Zustand stores: projectStore (projects, activeProject), agentStore (threads, messages, streaming)
 - IPC event listeners for agent:message and agent:status streaming
 - Auto-scroll, status indicators, streaming cursor animation
-- Next: 1.6 Project Management (open folder dialog, git detection, ProjectSettings)
+- Phase 1.6: project-manager.ts (folder dialog, git detection, CLAUDE.md/AGENTS.md reading)
+- ProjectSettings.tsx: per-project config (model, tools, system prompt, budget, concurrency)
+- IPC channels: project:openFolder, project:detectInfo
+- Sidebar updated with "Add Project" button
+- App.tsx updated with ProjectSettings dialog
+- Phase 1 COMPLETE - all 6 sub-steps done (1.1-1.6)

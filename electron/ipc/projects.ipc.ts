@@ -1,6 +1,11 @@
-import { ipcMain } from "electron";
+import { ipcMain, BrowserWindow } from "electron";
 import { storage } from "../services/storage";
-import type { Project, ProjectSettings } from "../../src/types/ipc";
+import { projectManager } from "../services/project-manager";
+import type {
+  Project,
+  ProjectSettings,
+  ProjectDetectionInfo,
+} from "../../src/types/ipc";
 
 export function registerProjectHandlers(): void {
   ipcMain.handle("project:list", (): Project[] => {
@@ -8,9 +13,7 @@ export function registerProjectHandlers(): void {
   });
 
   ipcMain.handle("project:add", (_event, projectPath: string): Project => {
-    const id = crypto.randomUUID();
-    const name = projectPath.split(/[\\/]/).pop() || "Unnamed";
-    return storage.addProject(id, name, projectPath);
+    return projectManager.addProject(projectPath);
   });
 
   ipcMain.handle("project:remove", (_event, id: string): void => {
@@ -30,6 +33,23 @@ export function registerProjectHandlers(): void {
     "project:updateSettings",
     (_event, id: string, settings: Partial<ProjectSettings>): void => {
       storage.updateProjectSettings(id, settings);
+    }
+  );
+
+  ipcMain.handle(
+    "project:openFolder",
+    async (_event): Promise<Project | null> => {
+      const win = BrowserWindow.getFocusedWindow();
+      return projectManager.openFolderDialog(win);
+    }
+  );
+
+  ipcMain.handle(
+    "project:detectInfo",
+    (_event, projectId: string): ProjectDetectionInfo => {
+      const project = storage.getProject(projectId);
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      return projectManager.detectProjectInfo(project.path);
     }
   );
 }

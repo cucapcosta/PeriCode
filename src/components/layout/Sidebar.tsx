@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useProjectStore } from "@/stores/projectStore";
 import { useAgentStore } from "@/stores/agentStore";
 
@@ -8,9 +8,11 @@ export const Sidebar: React.FC = () => {
     activeProjectId,
     loadProjects,
     setActiveProject,
+    openFolder,
   } = useProjectStore();
   const { threads, loadThreads, setActiveThread, activeThreadId } =
     useAgentStore();
+  const [addingProject, setAddingProject] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -21,6 +23,17 @@ export const Sidebar: React.FC = () => {
       loadThreads(activeProjectId);
     }
   }, [activeProjectId, loadThreads]);
+
+  const handleAddProject = async () => {
+    setAddingProject(true);
+    try {
+      await openFolder();
+    } catch (err) {
+      console.error("Failed to add project:", err);
+    } finally {
+      setAddingProject(false);
+    }
+  };
 
   return (
     <aside className="w-64 border-r border-border bg-card flex flex-col h-full">
@@ -33,9 +46,19 @@ export const Sidebar: React.FC = () => {
 
       {/* Projects */}
       <div className="p-3">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Projects
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Projects
+          </h2>
+          <button
+            onClick={handleAddProject}
+            disabled={addingProject}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            title="Add project folder"
+          >
+            + Add
+          </button>
+        </div>
         {projects.length === 0 ? (
           <p className="text-sm text-muted-foreground">No projects yet</p>
         ) : (

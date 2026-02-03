@@ -7,6 +7,8 @@ const VALID_INVOKE_CHANNELS = new Set([
   "project:remove",
   "project:getSettings",
   "project:updateSettings",
+  "project:openFolder",
+  "project:detectInfo",
   "agent:launch",
   "agent:pause",
   "agent:resume",
