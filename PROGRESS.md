@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 3.5 Skill Invocation in Agent Threads
+- **Sub-step**: 4.1 Automation Scheduler
 - **Status**: completed
-- **Last iteration**: 15
+- **Last iteration**: 16
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -22,7 +22,7 @@
 - [x] 3.3 Built-in Skills
 - [x] 3.4 Skills UI
 - [x] 3.5 Skill Invocation in Agent Threads
-- [ ] 4.1 Automation Scheduler
+- [x] 4.1 Automation Scheduler
 - [ ] 4.2 Automation Execution
 - [ ] 4.3 Result Inbox (Triage Queue)
 - [ ] 4.4 Automation Editor UI
@@ -98,4 +98,9 @@
 - NewAgentDialog: skill picker + worktree checkbox
 - Phase 3 COMPLETE - all 5 sub-steps done (3.1-3.5)
 - 42 tests passing
-- Next: 4.1 Automation Scheduler
+- Phase 4.1: automation-scheduler.ts with cron (node-cron), file watchers (chokidar), event system
+- Storage CRUD: addAutomation, updateAutomation, deleteAutomation, addAutomationRun, updateAutomationRun, listInboxRuns
+- automations.ipc.ts: all automation IPC handlers (list, create, update, delete, trigger, toggleEnabled, getHistory, getInbox, markRead, archiveRun)
+- Registered in ipc/index.ts
+- 42 tests passing
+- Next: 4.2 Automation Execution

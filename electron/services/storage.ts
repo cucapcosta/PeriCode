@@ -330,11 +330,118 @@ export const storage = {
     return rows;
   },
 
+  getAutomation(id: string): Automation | null {
+    const stmt = getDb().prepare("SELECT * FROM automations WHERE id = ?");
+    stmt.bind([id]);
+    if (!stmt.step()) { stmt.free(); return null; }
+    const row = stmt.getAsObject() as Record<string, unknown>;
+    stmt.free();
+    return mapAutomation(row);
+  },
+
+  addAutomation(
+    id: string, projectId: string, name: string, prompt: string,
+    triggerType: Automation["triggerType"], triggerConfig: Record<string, unknown>,
+    skillIds: string[], schedule: string | null, enabled: boolean
+  ): Automation {
+    getDb().run(
+      `INSERT INTO automations (id, project_id, name, prompt, skill_ids, schedule, trigger_type, trigger_config, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, projectId, name, prompt, JSON.stringify(skillIds), schedule, triggerType, JSON.stringify(triggerConfig), enabled ? 1 : 0]
+    );
+    saveToFile();
+    return this.getAutomation(id)!;
+  },
+
+  updateAutomation(id: string, updates: {
+    name?: string; prompt?: string; skillIds?: string[]; schedule?: string | null;
+    triggerType?: Automation["triggerType"]; triggerConfig?: Record<string, unknown>;
+    enabled?: boolean; lastRunAt?: string;
+  }): Automation {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (updates.name !== undefined) { sets.push("name = ?"); vals.push(updates.name); }
+    if (updates.prompt !== undefined) { sets.push("prompt = ?"); vals.push(updates.prompt); }
+    if (updates.skillIds !== undefined) { sets.push("skill_ids = ?"); vals.push(JSON.stringify(updates.skillIds)); }
+    if (updates.schedule !== undefined) { sets.push("schedule = ?"); vals.push(updates.schedule); }
+    if (updates.triggerType !== undefined) { sets.push("trigger_type = ?"); vals.push(updates.triggerType); }
+    if (updates.triggerConfig !== undefined) { sets.push("trigger_config = ?"); vals.push(JSON.stringify(updates.triggerConfig)); }
+    if (updates.enabled !== undefined) { sets.push("enabled = ?"); vals.push(updates.enabled ? 1 : 0); }
+    if (updates.lastRunAt !== undefined) { sets.push("last_run_at = ?"); vals.push(updates.lastRunAt); }
+    if (sets.length > 0) {
+      vals.push(id);
+      getDb().run(`UPDATE automations SET ${sets.join(", ")} WHERE id = ?`, vals);
+      saveToFile();
+    }
+    return this.getAutomation(id)!;
+  },
+
+  deleteAutomation(id: string): void {
+    getDb().run("DELETE FROM automation_runs WHERE automation_id = ?", [id]);
+    getDb().run("DELETE FROM automations WHERE id = ?", [id]);
+    saveToFile();
+  },
+
   // ── Automation Runs ───────────────────────────────────────
 
   listAutomationRuns(automationId: string): AutomationRun[] {
     const stmt = getDb().prepare("SELECT * FROM automation_runs WHERE automation_id = ? ORDER BY started_at DESC");
     stmt.bind([automationId]);
+    const rows: AutomationRun[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, unknown>;
+      rows.push(mapAutomationRun(row));
+    }
+    stmt.free();
+    return rows;
+  },
+
+  addAutomationRun(id: string, automationId: string): AutomationRun {
+    getDb().run(
+      "INSERT INTO automation_runs (id, automation_id, status) VALUES (?, ?, 'running')",
+      [id, automationId]
+    );
+    saveToFile();
+    return this.getAutomationRun(id)!;
+  },
+
+  getAutomationRun(id: string): AutomationRun | null {
+    const stmt = getDb().prepare("SELECT * FROM automation_runs WHERE id = ?");
+    stmt.bind([id]);
+    if (!stmt.step()) { stmt.free(); return null; }
+    const row = stmt.getAsObject() as Record<string, unknown>;
+    stmt.free();
+    return mapAutomationRun(row);
+  },
+
+  updateAutomationRun(id: string, updates: {
+    status?: AutomationRun["status"]; result?: Record<string, unknown>;
+    read?: boolean; finishedAt?: string;
+  }): AutomationRun {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (updates.status !== undefined) { sets.push("status = ?"); vals.push(updates.status); }
+    if (updates.result !== undefined) { sets.push("result = ?"); vals.push(JSON.stringify(updates.result)); }
+    if (updates.read !== undefined) { sets.push("read = ?"); vals.push(updates.read ? 1 : 0); }
+    if (updates.finishedAt !== undefined) { sets.push("finished_at = ?"); vals.push(updates.finishedAt); }
+    if (sets.length > 0) {
+      vals.push(id);
+      getDb().run(`UPDATE automation_runs SET ${sets.join(", ")} WHERE id = ?`, vals);
+      saveToFile();
+    }
+    return this.getAutomationRun(id)!;
+  },
+
+  listInboxRuns(filters?: { automationId?: string; status?: string; projectId?: string; unreadOnly?: boolean }): AutomationRun[] {
+    let sql = "SELECT ar.* FROM automation_runs ar JOIN automations a ON ar.automation_id = a.id WHERE 1=1";
+    const params: unknown[] = [];
+    if (filters?.automationId) { sql += " AND ar.automation_id = ?"; params.push(filters.automationId); }
+    if (filters?.status) { sql += " AND ar.status = ?"; params.push(filters.status); }
+    if (filters?.projectId) { sql += " AND a.project_id = ?"; params.push(filters.projectId); }
+    if (filters?.unreadOnly) { sql += " AND ar.read = 0"; }
+    sql += " ORDER BY ar.started_at DESC";
+    const stmt = getDb().prepare(sql);
+    if (params.length > 0) stmt.bind(params);
     const rows: AutomationRun[] = [];
     while (stmt.step()) {
       const row = stmt.getAsObject() as Record<string, unknown>;
