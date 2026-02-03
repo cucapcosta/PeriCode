@@ -42,6 +42,7 @@ const VALID_INVOKE_CHANNELS = new Set([
   "automation:getInbox",
   "automation:markRead",
   "automation:archiveRun",
+  "automation:getTemplates",
   "settings:get",
   "settings:update",
   "settings:getApiKeyStatus",

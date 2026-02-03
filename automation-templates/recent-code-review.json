@@ -1,0 +1,12 @@
+{
+  "name": "Recent Code Review",
+  "description": "Review commits from the past day and provide feedback on code quality",
+  "prompt": "Review all commits from the past 24 hours on branch {{branch}}:\n\n1. Read each changed file and understand the intent of the changes\n2. Check for security vulnerabilities (OWASP Top 10)\n3. Identify performance issues or anti-patterns\n4. Verify error handling is adequate\n5. Check test coverage for the changes\n\nProvide a structured review with severity levels:\n- CRITICAL: Must address immediately\n- WARNING: Should address soon\n- INFO: Suggestions for improvement\n\nDate: {{date}}",
+  "triggerType": "cron",
+  "schedule": "0 18 * * 1-5",
+  "triggerConfig": {
+    "sandboxPolicy": "read-only",
+    "budgetLimitUsd": 1.00
+  },
+  "skillIds": []
+}

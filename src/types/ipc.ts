@@ -183,6 +183,16 @@ export interface InboxFilters {
   unreadOnly?: boolean;
 }
 
+export interface AutomationTemplate {
+  name: string;
+  description: string;
+  prompt: string;
+  triggerType: Automation["triggerType"];
+  schedule: string | null;
+  triggerConfig: Record<string, unknown>;
+  skillIds: string[];
+}
+
 export interface AppSettings {
   theme: "light" | "dark" | "system";
   defaultModel: string;
@@ -292,6 +302,7 @@ export interface IPCInvokeChannels {
   };
   "automation:markRead": { args: [runId: string]; return: void };
   "automation:archiveRun": { args: [runId: string]; return: void };
+  "automation:getTemplates": { args: []; return: AutomationTemplate[] };
 
   // Settings
   "settings:get": { args: []; return: AppSettings };

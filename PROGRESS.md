@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 4.4 Automation Editor UI
+- **Sub-step**: 4.5 Built-in Automation Templates
 - **Status**: completed
-- **Last iteration**: 19
+- **Last iteration**: 20
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -26,7 +26,7 @@
 - [x] 4.2 Automation Execution
 - [x] 4.3 Result Inbox (Triage Queue)
 - [x] 4.4 Automation Editor UI
-- [ ] 4.5 Built-in Automation Templates
+- [x] 4.5 Built-in Automation Templates
 - [ ] 5.1 Command Palette
 - [ ] 5.2 Status Bar
 - [ ] 5.3 Settings & Preferences
@@ -114,4 +114,9 @@
 - AutomationList.tsx: list with enable/disable toggle, run now, edit, delete
 - App.tsx: Automations view with editor dialog, refactored view buttons
 - 42 tests passing
-- Next: 4.5 Built-in Automation Templates
+- Phase 4.5: 3 built-in automation templates (daily-triage, ci-failure-analyzer, recent-code-review)
+- automation-templates.ts: template loader with loadAutomationTemplates() and templateToConfig()
+- automation:getTemplates IPC handler added
+- Phase 4 COMPLETE - all 5 sub-steps done (4.1-4.5)
+- 42 tests passing
+- Next: 5.1 Command Palette

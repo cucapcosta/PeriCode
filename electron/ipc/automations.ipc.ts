@@ -1,10 +1,12 @@
 import { ipcMain, BrowserWindow } from "electron";
 import { automationScheduler } from "../services/automation-scheduler";
+import { loadAutomationTemplates } from "../services/automation-templates";
 import { storage } from "../services/storage";
 import type {
   Automation,
   AutomationConfig,
   AutomationRun,
+  AutomationTemplate,
   InboxFilters,
 } from "../../src/types/ipc";
 
@@ -80,6 +82,13 @@ export function registerAutomationHandlers(): void {
     "automation:archiveRun",
     async (_event, runId: string): Promise<void> => {
       storage.updateAutomationRun(runId, { status: "archived" });
+    }
+  );
+
+  ipcMain.handle(
+    "automation:getTemplates",
+    async (): Promise<AutomationTemplate[]> => {
+      return loadAutomationTemplates();
     }
   );
 

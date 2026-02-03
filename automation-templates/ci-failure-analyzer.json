@@ -1,0 +1,13 @@
+{
+  "name": "CI Failure Analyzer",
+  "description": "When CI fails, analyze the failure and suggest fixes",
+  "prompt": "A CI build has failed. Analyze the failure:\n\n1. Read the CI configuration and recent changes\n2. Check the test files and source code related to the failure\n3. Identify the root cause of the failure\n4. Suggest a specific fix with code changes if possible\n\nChanged files: {{changed_files}}\nAuthor: {{author}}\nCommit: {{commit_message}}",
+  "triggerType": "git_event",
+  "schedule": null,
+  "triggerConfig": {
+    "eventType": "commit",
+    "sandboxPolicy": "read-only",
+    "budgetLimitUsd": 0.75
+  },
+  "skillIds": []
+}

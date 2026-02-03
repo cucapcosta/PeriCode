@@ -1,0 +1,12 @@
+{
+  "name": "Daily Triage",
+  "description": "Review open issues and pull requests, summarize priorities and blockers",
+  "prompt": "Review the current state of this project:\n\n1. Check for any open issues or pull requests\n2. Review recent commits from the past 24 hours\n3. Identify any blocking issues or high-priority items\n4. Summarize the project status in a concise report\n\nDate: {{date}}\nBranch: {{branch}}",
+  "triggerType": "cron",
+  "schedule": "0 9 * * 1-5",
+  "triggerConfig": {
+    "sandboxPolicy": "read-only",
+    "budgetLimitUsd": 0.50
+  },
+  "skillIds": []
+}
