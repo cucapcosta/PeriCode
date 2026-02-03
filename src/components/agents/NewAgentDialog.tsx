@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAgentStore } from "@/stores/agentStore";
 import { useProjectStore } from "@/stores/projectStore";
+import { ipc } from "@/lib/ipc-client";
+import type { Skill } from "@/types/ipc";
 
 interface NewAgentDialogProps {
   open: boolean;
@@ -13,8 +15,32 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
 }) => {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [useWorktree, setUseWorktree] = useState(false);
   const { launchAgent } = useAgentStore();
   const { activeProjectId } = useProjectStore();
+
+  useEffect(() => {
+    if (open) {
+      loadSkills();
+    }
+  }, [open]);
+
+  const loadSkills = async () => {
+    try {
+      const result = await ipc.invoke("skill:list");
+      setSkills(result);
+    } catch (err) {
+      console.error("Failed to load skills:", err);
+    }
+  };
+
+  const toggleSkill = (id: string) => {
+    setSelectedSkillIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  };
 
   if (!open) return null;
 
@@ -27,13 +53,28 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
       await launchAgent({
         projectId: activeProjectId,
         prompt: prompt.trim(),
+        skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+        useWorktree,
       });
       setPrompt("");
+      setSelectedSkillIds([]);
+      setUseWorktree(false);
       onClose();
     } catch (err) {
       console.error("Failed to launch agent:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const scopeBadgeColor = (scope: Skill["scope"]) => {
+    switch (scope) {
+      case "system":
+        return "bg-blue-500/20 text-blue-400";
+      case "user":
+        return "bg-green-500/20 text-green-400";
+      case "project":
+        return "bg-purple-500/20 text-purple-400";
     }
   };
 
@@ -68,6 +109,54 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
               className="w-full resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               autoFocus
             />
+          </div>
+
+          {/* Skills selector */}
+          {skills.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Skills
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {skills.map((skill) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() => toggleSkill(skill.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      selectedSkillIds.includes(skill.id)
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border hover:text-foreground"
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${scopeBadgeColor(skill.scope)}`}
+                    />
+                    {skill.name}
+                  </button>
+                ))}
+              </div>
+              {selectedSkillIds.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {selectedSkillIds.length} skill{selectedSkillIds.length !== 1 ? "s" : ""} selected
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Worktree option */}
+          <div className="mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useWorktree}
+                onChange={(e) => setUseWorktree(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span className="text-sm text-foreground">
+                Use isolated worktree
+              </span>
+            </label>
           </div>
 
           <div className="flex justify-end gap-3">

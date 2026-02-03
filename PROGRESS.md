@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 3.4 Skills UI
+- **Sub-step**: 3.5 Skill Invocation in Agent Threads
 - **Status**: completed
-- **Last iteration**: 14
+- **Last iteration**: 15
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -21,7 +21,7 @@
 - [x] 3.2 Skills Engine
 - [x] 3.3 Built-in Skills
 - [x] 3.4 Skills UI
-- [ ] 3.5 Skill Invocation in Agent Threads
+- [x] 3.5 Skill Invocation in Agent Threads
 - [ ] 4.1 Automation Scheduler
 - [ ] 4.2 Automation Execution
 - [ ] 4.3 Result Inbox (Triage Queue)
@@ -93,4 +93,9 @@
 - Phase 3.4: SkillBrowser (grid/list view, scope filter, search, preview), SkillEditor (form/raw/preview tabs), SkillInstaller (file/git import)
 - App.tsx updated with Skills view mode in top bar, skill editor and installer dialogs
 - 42 tests passing
-- Next: 3.5 Skill Invocation in Agent Threads
+- Phase 3.5: Skill selector in NewAgentDialog, $skill-name syntax detection in ThreadView chat input
+- Active skills badges in thread header with detach button
+- NewAgentDialog: skill picker + worktree checkbox
+- Phase 3 COMPLETE - all 5 sub-steps done (3.1-3.5)
+- 42 tests passing
+- Next: 4.1 Automation Scheduler

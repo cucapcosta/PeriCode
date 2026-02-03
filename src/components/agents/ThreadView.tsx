@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAgentStore } from "@/stores/agentStore";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ipc } from "@/lib/ipc-client";
-import type { StreamMessage, MessageContent } from "@/types/ipc";
+import type { Skill, StreamMessage, MessageContent } from "@/types/ipc";
 
 export const ThreadView: React.FC = () => {
   const {
@@ -16,7 +16,12 @@ export const ThreadView: React.FC = () => {
   } = useAgentStore();
   const [input, setInput] = useState("");
   const [showDiff, setShowDiff] = useState(false);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [activeSkills, setActiveSkills] = useState<Map<string, string[]>>(new Map());
+  const [skillSuggestions, setSkillSuggestions] = useState<Skill[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const activeThread = threads.find((t) => t.id === activeThreadId);
   const threadMessages = activeThreadId
@@ -25,6 +30,14 @@ export const ThreadView: React.FC = () => {
   const currentStreamingText = activeThreadId
     ? streamingText.get(activeThreadId) || ""
     : "";
+  const threadActiveSkills = activeThreadId
+    ? activeSkills.get(activeThreadId) || []
+    : [];
+
+  // Load skills once
+  useEffect(() => {
+    ipc.invoke("skill:list").then(setSkills).catch(() => {});
+  }, []);
 
   // Listen for streaming messages
   const onStreamMessage = useCallback(
@@ -55,10 +68,70 @@ export const ThreadView: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [threadMessages, currentStreamingText]);
 
+  // Detect $skill-name syntax in input
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInput(val);
+
+    // Check for $ prefix to trigger skill suggestions
+    const dollarMatch = val.match(/\$(\S*)$/);
+    if (dollarMatch) {
+      const query = dollarMatch[1].toLowerCase();
+      const matches = skills.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          s.name.toLowerCase().replace(/\s+/g, "-").includes(query)
+      );
+      setSkillSuggestions(matches);
+      setShowSuggestions(matches.length > 0);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+
+  const insertSkillReference = (skill: Skill) => {
+    // Replace the $partial with $skill-name
+    const slugName = skill.name.toLowerCase().replace(/\s+/g, "-");
+    const newInput = input.replace(/\$\S*$/, `$${slugName} `);
+    setInput(newInput);
+    setShowSuggestions(false);
+
+    // Track skill as active for this thread
+    if (activeThreadId) {
+      setActiveSkills((prev) => {
+        const updated = new Map(prev);
+        const current = updated.get(activeThreadId) || [];
+        if (!current.includes(skill.id)) {
+          updated.set(activeThreadId, [...current, skill.id]);
+        }
+        return updated;
+      });
+    }
+
+    inputRef.current?.focus();
+  };
+
+  const detachSkill = (skillId: string) => {
+    if (!activeThreadId) return;
+    setActiveSkills((prev) => {
+      const updated = new Map(prev);
+      const current = updated.get(activeThreadId) || [];
+      updated.set(
+        activeThreadId,
+        current.filter((id) => id !== skillId)
+      );
+      return updated;
+    });
+  };
+
+  const getSkillById = (id: string): Skill | undefined =>
+    skills.find((s) => s.id === id);
+
   const handleSend = async () => {
     if (!input.trim() || !activeThreadId) return;
     const msg = input.trim();
     setInput("");
+    setShowSuggestions(false);
     await sendMessage(activeThreadId, msg);
   };
 
@@ -66,6 +139,9 @@ export const ThreadView: React.FC = () => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+    if (e.key === "Escape") {
+      setShowSuggestions(false);
     }
   };
 
@@ -102,6 +178,31 @@ export const ThreadView: React.FC = () => {
         <h2 className="font-semibold text-foreground truncate flex-1">
           {activeThread.title || "Untitled Thread"}
         </h2>
+
+        {/* Active skills badges */}
+        {threadActiveSkills.length > 0 && (
+          <div className="flex items-center gap-1">
+            {threadActiveSkills.map((skillId) => {
+              const skill = getSkillById(skillId);
+              if (!skill) return null;
+              return (
+                <span
+                  key={skillId}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium"
+                >
+                  {skill.name}
+                  <button
+                    onClick={() => detachSkill(skillId)}
+                    className="text-primary/60 hover:text-primary"
+                  >
+                    x
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
         {activeThread.worktreePath && (
           <button
             onClick={() => setShowDiff(true)}
@@ -174,13 +275,32 @@ export const ThreadView: React.FC = () => {
       </div>
 
       {/* Input bar */}
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-border relative">
+        {/* Skill suggestions popup */}
+        {showSuggestions && (
+          <div className="absolute bottom-full left-4 right-4 mb-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-auto">
+            {skillSuggestions.map((skill) => (
+              <button
+                key={skill.id}
+                onClick={() => insertSkillReference(skill)}
+                className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors flex items-center gap-2"
+              >
+                <span className="font-medium">${skill.name.toLowerCase().replace(/\s+/g, "-")}</span>
+                <span className="text-xs text-muted-foreground truncate">
+                  {skill.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
           <textarea
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Send a message..."
+            placeholder="Send a message... (type $ for skills)"
             rows={1}
             className="flex-1 resize-none rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
