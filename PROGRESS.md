@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 2 - Multi-Agent & Worktrees
-- **Sub-step**: 2.1 Git Worktree Manager
+- **Sub-step**: 2.2 Agent Pool & Orchestration
 - **Status**: completed
-- **Last iteration**: 7
+- **Last iteration**: 8
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -14,7 +14,7 @@
 - [x] 1.5 Basic Chat UI
 - [x] 1.6 Project Management
 - [x] 2.1 Git Worktree Manager
-- [ ] 2.2 Agent Pool & Orchestration
+- [x] 2.2 Agent Pool & Orchestration
 - [ ] 2.3 Multi-Thread UI
 - [ ] 2.4 Diff Review Workflow
 - [ ] 3.1 Skill Definition Format
@@ -58,4 +58,10 @@
 - WorktreeInfo and GitStatus types added to ipc.ts
 - storage.updateThreadWorktree() added for worktree path tracking
 - 31 tests passing (App: 3, Storage: 14, Session Registry: 8, Worktree Manager: 6)
-- Next: 2.2 Agent Pool & Orchestration
+- Phase 2.2: Extended agent-orchestrator with concurrency limit (default 3), queue system, budget tracking
+- Concurrency: canLaunch(), processQueue(), setMaxConcurrent(), getQueuedCount()
+- Budget: per-project cost tracking, budget cap enforcement, getProjectCost(), getTotalCost(), getAgentCost()
+- Events: onEvent/offEvent for launched/completed/failed/cancelled/queued/dequeued/cost_update
+- Worktree integration: auto-create worktree when useWorktree=true in AgentLaunchConfig
+- 31 tests passing
+- Next: 2.3 Multi-Thread UI
