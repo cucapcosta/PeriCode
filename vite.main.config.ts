@@ -7,7 +7,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ["better-sqlite3", "simple-git"],
+      external: ["better-sqlite3", "simple-git", "sql.js"],
     },
   },
 });

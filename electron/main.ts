@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from "electron";
 import path from "path";
 import { registerAllIPCHandlers } from "./ipc";
+import { storage } from "./services/storage";
+import { getDatabasePath } from "./utils/paths";
+import { logger } from "./utils/logger";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -46,7 +49,14 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    await storage.initialize(getDatabasePath());
+    logger.info("main", "Database initialized");
+  } catch (err) {
+    logger.error("main", "Failed to initialize database", err);
+  }
+
   registerAllIPCHandlers();
   createWindow();
 
@@ -61,4 +71,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  storage.close();
 });

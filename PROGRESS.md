@@ -2,14 +2,14 @@
 
 ## Current Status
 - **Phase**: Phase 1 - Foundation (Scaffold + Single Agent)
-- **Sub-step**: 1.2 Electron Shell
+- **Sub-step**: 1.3 Storage Layer
 - **Status**: completed
-- **Last iteration**: 2
+- **Last iteration**: 3
 
 ## Completed
 - [x] 1.1 Project Scaffolding
 - [x] 1.2 Electron Shell
-- [ ] 1.3 Storage Layer
+- [x] 1.3 Storage Layer
 - [ ] 1.4 Single Agent Integration
 - [ ] 1.5 Basic Chat UI
 - [ ] 1.6 Project Management
@@ -36,12 +36,11 @@
 - [ ] 5.7 Export & Reporting
 
 ## Notes
-- Full IPC type contract defined in src/types/ipc.ts with all channel definitions
-- Preload script validates channels against whitelist for security
-- Type-safe ipc-client wrapper in renderer provides compile-time channel checking
-- IPC handlers registered for projects, agents, and settings (in-memory for now)
-- useIPCInvoke and useIPCEvent hooks created for React components
-- Logger and paths utilities created for main process
-- Window uses show:false + ready-to-show pattern to prevent flash
-- No native modules (better-sqlite3 deferred) - no VS Build Tools on this machine
-- Next: 1.3 Storage Layer (SQLite database, schema, CRUD operations)
+- Using sql.js (pure JS/WASM SQLite) instead of better-sqlite3 due to no VS Build Tools
+- Full database schema with all 7 tables + indexes matching PLAN.md spec
+- CRUD operations for: projects, threads, messages, skills, automations, automation_runs, app_settings
+- IPC handlers now wired to storage service (not in-memory)
+- 14 storage tests + 2 app tests = 16 tests all passing
+- Database persists to disk via sql.js export/import
+- main.ts initializes storage on app ready, closes on before-quit
+- Next: 1.4 Single Agent Integration (Claude Agent SDK)
