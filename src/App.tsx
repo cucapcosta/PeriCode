@@ -4,14 +4,21 @@ import { ThreadView } from "./components/agents/ThreadView";
 import { NewAgentDialog } from "./components/agents/NewAgentDialog";
 import { ProjectSettings } from "./components/settings/ProjectSettings";
 import { AllAgentsDashboard } from "./components/agents/AllAgentsDashboard";
+import { SkillBrowser } from "./components/skills/SkillBrowser";
+import { SkillEditor } from "./components/skills/SkillEditor";
+import { SkillInstaller } from "./components/skills/SkillInstaller";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
+import type { Skill } from "./types/ipc";
 
-type MainView = "thread" | "dashboard" | "split";
+type MainView = "thread" | "dashboard" | "split" | "skills";
 
 export const App: React.FC = () => {
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [showSkillEditor, setShowSkillEditor] = useState(false);
+  const [showSkillInstaller, setShowSkillInstaller] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [mainView, setMainView] = useState<MainView>("thread");
   const { activeProjectId } = useProjectStore();
   const { activeThreadId } = useAgentStore();
@@ -62,20 +69,61 @@ export const App: React.FC = () => {
                 >
                   Split
                 </button>
+                <button
+                  onClick={() => setMainView("skills")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-border ${
+                    mainView === "skills"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  Skills
+                </button>
               </div>
             </div>
-            <button
-              onClick={() => setShowNewAgent(true)}
-              className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
-            >
-              + New Agent
-            </button>
+            <div className="flex items-center gap-2">
+              {mainView === "skills" && (
+                <>
+                  <button
+                    onClick={() => setShowSkillInstaller(true)}
+                    className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+                  >
+                    Import
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingSkill(null);
+                      setShowSkillEditor(true);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+                  >
+                    + New Skill
+                  </button>
+                </>
+              )}
+              {mainView !== "skills" && (
+                <button
+                  onClick={() => setShowNewAgent(true)}
+                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+                >
+                  + New Agent
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {/* Main content area */}
         {mainView === "thread" && <ThreadView />}
         {mainView === "dashboard" && <AllAgentsDashboard />}
+        {mainView === "skills" && (
+          <SkillBrowser
+            onEdit={(skill) => {
+              setEditingSkill(skill);
+              setShowSkillEditor(true);
+            }}
+          />
+        )}
         {mainView === "split" && (
           <div className="flex-1 flex overflow-hidden">
             <div className="flex-1 border-r border-border overflow-hidden">
@@ -106,6 +154,20 @@ export const App: React.FC = () => {
           onClose={() => setShowProjectSettings(false)}
         />
       )}
+
+      <SkillEditor
+        open={showSkillEditor}
+        onClose={() => {
+          setShowSkillEditor(false);
+          setEditingSkill(null);
+        }}
+        editingSkill={editingSkill}
+      />
+
+      <SkillInstaller
+        open={showSkillInstaller}
+        onClose={() => setShowSkillInstaller(false)}
+      />
     </div>
   );
 };

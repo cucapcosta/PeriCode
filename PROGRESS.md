@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 3.3 Built-in Skills
+- **Sub-step**: 3.4 Skills UI
 - **Status**: completed
-- **Last iteration**: 13
+- **Last iteration**: 14
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -20,7 +20,7 @@
 - [x] 3.1 Skill Definition Format
 - [x] 3.2 Skills Engine
 - [x] 3.3 Built-in Skills
-- [ ] 3.4 Skills UI
+- [x] 3.4 Skills UI
 - [ ] 3.5 Skill Invocation in Agent Threads
 - [ ] 4.1 Automation Scheduler
 - [ ] 4.2 Automation Execution
@@ -90,4 +90,7 @@
 - Built-in skills: code-review, test-generator, refactor, documentation, migration, debug
 - 2 new tests verifying all 6 built-in skills scan correctly and have required fields
 - 42 tests passing
-- Next: 3.4 Skills UI
+- Phase 3.4: SkillBrowser (grid/list view, scope filter, search, preview), SkillEditor (form/raw/preview tabs), SkillInstaller (file/git import)
+- App.tsx updated with Skills view mode in top bar, skill editor and installer dialogs
+- 42 tests passing
+- Next: 3.5 Skill Invocation in Agent Threads
