@@ -160,4 +160,36 @@ Do the thing.`;
       expect(results).toEqual([]);
     });
   });
+
+  describe("built-in skills", () => {
+    const builtinSkillsPath = path.join(__dirname, "../../skills");
+
+    it("ships all 6 built-in skills", () => {
+      const results = scanSkillsDirectory(builtinSkillsPath);
+      expect(results.length).toBe(6);
+
+      const names = results.map((r) => r.parsed.name).sort();
+      expect(names).toEqual([
+        "Code Review Expert",
+        "Debug Investigator",
+        "Documentation Writer",
+        "Migration Assistant",
+        "Refactor Assistant",
+        "Test Generator",
+      ]);
+    });
+
+    it("all built-in skills have required fields", () => {
+      const results = scanSkillsDirectory(builtinSkillsPath);
+      for (const { parsed, dirName } of results) {
+        expect(parsed.name, `${dirName} must have a name`).toBeTruthy();
+        expect(parsed.description, `${dirName} must have a description`).toBeTruthy();
+        expect(parsed.model, `${dirName} must have a model`).toBeTruthy();
+        expect(parsed.tools, `${dirName} must have tools`).toBeDefined();
+        expect(parsed.tools!.length, `${dirName} must have at least one tool`).toBeGreaterThan(0);
+        expect(parsed.maxBudgetUsd, `${dirName} must have a budget`).toBeGreaterThan(0);
+        expect(parsed.instructions, `${dirName} must have instructions`).toBeTruthy();
+      }
+    });
+  });
 });

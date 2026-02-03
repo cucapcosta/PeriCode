@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 3 - Skills System
-- **Sub-step**: 3.2 Skills Engine
+- **Sub-step**: 3.3 Built-in Skills
 - **Status**: completed
-- **Last iteration**: 12
+- **Last iteration**: 13
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -19,7 +19,7 @@
 - [x] 2.4 Diff Review Workflow
 - [x] 3.1 Skill Definition Format
 - [x] 3.2 Skills Engine
-- [ ] 3.3 Built-in Skills
+- [x] 3.3 Built-in Skills
 - [ ] 3.4 Skills UI
 - [ ] 3.5 Skill Invocation in Agent Threads
 - [ ] 4.1 Automation Scheduler
@@ -86,4 +86,8 @@
 - skills.ipc.ts: IPC handlers for skill:list, get, create, update, delete, export, import
 - Registered skill handlers in ipc/index.ts
 - 40 tests passing
-- Next: 3.3 Built-in Skills
+- Phase 3.3: Added migration and debug built-in skills (now 6 total)
+- Built-in skills: code-review, test-generator, refactor, documentation, migration, debug
+- 2 new tests verifying all 6 built-in skills scan correctly and have required fields
+- 42 tests passing
+- Next: 3.4 Skills UI
