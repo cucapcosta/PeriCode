@@ -470,9 +470,15 @@ export const storage = {
   getAppSettings(): AppSettings {
     const saved = this.getSetting("app_settings") as Partial<AppSettings> | undefined;
     return {
-      theme: "dark", defaultModel: "sonnet", maxConcurrentAgents: 3,
-      defaultBudgetLimitUsd: 10.0, fontSize: 14, interactionStyle: "detailed",
-      diffViewMode: "unified", claudeCliPath: null, logLevel: "info",
+      theme: "dark", defaultModel: "sonnet",
+      maxConcurrentAgents: 3, defaultBudgetLimitUsd: 10.0,
+      defaultTools: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
+      permissionMode: "acceptEdits" as const,
+      defaultSandboxPolicy: "workspace-write" as const,
+      automationsEnabled: true, notifyOnCompletion: true, notifyOnFailure: true,
+      fontSize: 14, interactionStyle: "detailed" as const,
+      diffViewMode: "unified" as const, claudeCliPath: null,
+      logLevel: "info" as const, skillDirectories: [],
       ...saved,
     };
   },

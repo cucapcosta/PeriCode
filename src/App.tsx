@@ -12,6 +12,7 @@ import { AutomationInbox } from "./components/automations/AutomationInbox";
 import { AutomationList } from "./components/automations/AutomationList";
 import { AutomationEditor } from "./components/automations/AutomationEditor";
 import { CommandBar, type CommandAction } from "./components/common/CommandBar";
+import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore } from "./stores/agentStore";
 import type { Skill, Automation } from "./types/ipc";
@@ -25,18 +26,23 @@ export const App: React.FC = () => {
   const [showSkillInstaller, setShowSkillInstaller] = useState(false);
   const [showAutomationEditor, setShowAutomationEditor] = useState(false);
   const [showCommandBar, setShowCommandBar] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [mainView, setMainView] = useState<MainView>("thread");
   const { activeProjectId } = useProjectStore();
   const { activeThreadId } = useAgentStore();
 
-  // Global keyboard shortcut: Ctrl+K / Cmd+K for command palette
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
         setShowCommandBar((prev) => !prev);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setShowAppSettings((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handler);
@@ -76,6 +82,13 @@ export const App: React.FC = () => {
               <button
                 onClick={() => setShowProjectSettings(true)}
                 className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+              >
+                Project
+              </button>
+              <button
+                onClick={() => setShowAppSettings(true)}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+                title="Ctrl+,"
               >
                 Settings
               </button>
@@ -223,6 +236,11 @@ export const App: React.FC = () => {
         open={showCommandBar}
         onClose={() => setShowCommandBar(false)}
         onAction={handleCommandAction}
+      />
+
+      <SettingsPanel
+        open={showAppSettings}
+        onClose={() => setShowAppSettings(false)}
       />
     </div>
   );

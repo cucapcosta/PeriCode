@@ -194,15 +194,27 @@ export interface AutomationTemplate {
 }
 
 export interface AppSettings {
+  // General
   theme: "light" | "dark" | "system";
   defaultModel: string;
+  // Agents
   maxConcurrentAgents: number;
   defaultBudgetLimitUsd: number;
+  defaultTools: string[];
+  permissionMode: "ask" | "acceptEdits" | "full";
+  defaultSandboxPolicy: "read-only" | "workspace-write" | "full";
+  // Automations
+  automationsEnabled: boolean;
+  notifyOnCompletion: boolean;
+  notifyOnFailure: boolean;
+  // Appearance
   fontSize: number;
   interactionStyle: "terse" | "detailed";
   diffViewMode: "unified" | "split";
+  // Advanced
   claudeCliPath: string | null;
   logLevel: "debug" | "info" | "warn" | "error";
+  skillDirectories: string[];
 }
 
 export interface ProjectDetectionInfo {

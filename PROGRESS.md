@@ -2,9 +2,9 @@
 
 ## Current Status
 - **Phase**: Phase 5 - Polish & UX
-- **Sub-step**: 5.2 Status Bar
+- **Sub-step**: 5.3 Settings & Preferences
 - **Status**: completed
-- **Last iteration**: 22
+- **Last iteration**: 23
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -29,7 +29,7 @@
 - [x] 4.5 Built-in Automation Templates
 - [x] 5.1 Command Palette
 - [x] 5.2 Status Bar
-- [ ] 5.3 Settings & Preferences
+- [x] 5.3 Settings & Preferences
 - [ ] 5.4 Keyboard Shortcuts
 - [ ] 5.5 Notification System
 - [ ] 5.6 Embedded Terminal
@@ -128,4 +128,8 @@
 - status.ipc.ts: status:getInfo IPC handler aggregating orchestrator, scheduler, env data
 - StatusInfo type added to ipc.ts, preload whitelist updated
 - 42 tests passing
-- Next: 5.3 Settings & Preferences
+- Phase 5.3: SettingsPanel.tsx with 5 tabs (General, Agents, Automations, Appearance, Advanced)
+- Extended AppSettings with defaultTools, permissionMode, defaultSandboxPolicy, automationsEnabled, notifications, skillDirectories
+- Ctrl+, shortcut for app settings, separate Project/Settings buttons in top bar
+- 42 tests passing
+- Next: 5.4 Keyboard Shortcuts
