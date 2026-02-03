@@ -1,10 +1,10 @@
 # PeriCode Build Progress
 
 ## Current Status
-- **Phase**: Phase 1 - Foundation (Scaffold + Single Agent)
-- **Sub-step**: 1.6 Project Management
+- **Phase**: Phase 2 - Multi-Agent & Worktrees
+- **Sub-step**: 2.1 Git Worktree Manager
 - **Status**: completed
-- **Last iteration**: 6
+- **Last iteration**: 7
 
 ## Completed
 - [x] 1.1 Project Scaffolding
@@ -13,7 +13,7 @@
 - [x] 1.4 Single Agent Integration
 - [x] 1.5 Basic Chat UI
 - [x] 1.6 Project Management
-- [ ] 2.1 Git Worktree Manager
+- [x] 2.1 Git Worktree Manager
 - [ ] 2.2 Agent Pool & Orchestration
 - [ ] 2.3 Multi-Thread UI
 - [ ] 2.4 Diff Review Workflow
@@ -53,3 +53,9 @@
 - Sidebar updated with "Add Project" button
 - App.tsx updated with ProjectSettings dialog
 - Phase 1 COMPLETE - all 6 sub-steps done (1.1-1.6)
+- Phase 2.1: worktree-manager.ts (create, destroy, list, getDiff, syncBack, getStatus, cleanupOrphaned)
+- worktrees.ipc.ts: IPC handlers for getDiff, acceptAll, acceptFile, reject, openInEditor
+- WorktreeInfo and GitStatus types added to ipc.ts
+- storage.updateThreadWorktree() added for worktree path tracking
+- 31 tests passing (App: 3, Storage: 14, Session Registry: 8, Worktree Manager: 6)
+- Next: 2.2 Agent Pool & Orchestration

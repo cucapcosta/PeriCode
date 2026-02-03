@@ -86,6 +86,24 @@ export interface ErrorInfo {
   stack?: string;
 }
 
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  commitHash: string;
+  isMain: boolean;
+}
+
+export interface GitStatus {
+  modified: string[];
+  added: string[];
+  deleted: string[];
+  renamed: string[];
+  untracked: string[];
+  staged: string[];
+  conflicted: string[];
+  isClean: boolean;
+}
+
 export interface FileDiff {
   path: string;
   status: "added" | "modified" | "deleted" | "renamed";

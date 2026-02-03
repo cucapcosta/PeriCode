@@ -247,6 +247,11 @@ export const storage = {
     saveToFile();
   },
 
+  updateThreadWorktree(id: string, worktreePath: string | null, worktreeBranch: string | null): void {
+    getDb().run("UPDATE threads SET worktree_path = ?, worktree_branch = ?, updated_at = ? WHERE id = ?", [worktreePath, worktreeBranch, new Date().toISOString(), id]);
+    saveToFile();
+  },
+
   deleteThread(id: string): void {
     getDb().run("DELETE FROM messages WHERE thread_id = ?", [id]);
     getDb().run("DELETE FROM threads WHERE id = ?", [id]);
