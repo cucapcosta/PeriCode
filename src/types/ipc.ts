@@ -59,9 +59,28 @@ export interface AgentLaunchConfig {
   model?: string;
   skillIds?: string[];
   useWorktree?: boolean;
+  allowedTools?: string[];
 }
 
 export type AgentStatus = "running" | "paused" | "completed" | "failed";
+
+export interface ModelTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  costUsd: number;
+}
+
+export interface StreamingContentBlock {
+  id: string;
+  type: "text" | "tool_use" | "tool_result";
+  text?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolOutput?: string;
+  isComplete: boolean;
+}
 
 export interface StreamMessage {
   type: "text" | "tool_use" | "tool_result" | "cost" | "status";
@@ -69,10 +88,20 @@ export interface StreamMessage {
   toolName?: string;
   toolInput?: Record<string, unknown>;
   toolOutput?: string;
+  blockIndex?: number;
   costUsd?: number;
   tokensIn?: number;
   tokensOut?: number;
+  modelUsage?: Record<string, ModelTokenUsage>;
   status?: AgentStatus;
+}
+
+export interface ThreadCostSummary {
+  threadId: string;
+  totalCostUsd: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  modelUsage: Record<string, ModelTokenUsage>;
 }
 
 export interface CostUpdate {
@@ -240,8 +269,9 @@ export interface StatusInfo {
   totalCostUsd: number;
   totalTokensIn: number;
   totalTokensOut: number;
-  apiKeyValid: boolean;
-  apiKeyProvider: string;
+  modelUsage: Record<string, ModelTokenUsage>;
+  cliAvailable: boolean;
+  cliVersion: string | null;
   activeAutomations: number;
   nextAutomationRun: string | null;
 }
@@ -280,6 +310,7 @@ export interface IPCInvokeChannels {
   "thread:getMessages": { args: [threadId: string]; return: Message[] };
   "thread:delete": { args: [threadId: string]; return: void };
   "thread:fork": { args: [threadId: string]; return: ThreadInfo };
+  "thread:getCostSummary": { args: [threadId: string]; return: ThreadCostSummary };
 
   // Diff / Worktrees
   "worktree:getDiff": { args: [threadId: string]; return: FileDiff[] };
@@ -334,9 +365,9 @@ export interface IPCInvokeChannels {
     args: [settings: Partial<AppSettings>];
     return: void;
   };
-  "settings:getApiKeyStatus": {
+  "settings:getCliStatus": {
     args: [];
-    return: { valid: boolean; provider: string };
+    return: { available: boolean; version: string | null; path: string | null };
   };
 
   // Status

@@ -145,112 +145,109 @@ export const App: React.FC = () => {
       <div className="flex flex-1 min-h-0">
       {sidebarVisible && <Sidebar />}
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Top bar */}
         {activeProjectId && (
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowProjectSettings(true)}
-                className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-              >
-                Project
-              </button>
-              <button
-                onClick={() => setShowAppSettings(true)}
-                className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-                title="Ctrl+,"
-              >
-                Settings
-              </button>
-              <div className="flex rounded-lg border border-border overflow-hidden">
-                {viewButtons.map((btn, i) => (
-                  <button
-                    key={btn.key}
-                    onClick={() => setMainView(btn.key)}
-                    className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                      mainView === btn.key
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                    } ${i > 0 ? "border-l border-border" : ""}`}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
+          <div className="flex items-center gap-1.5 px-2 py-1 border-b border-border flex-shrink-0">
+            <button
+              onClick={() => setShowProjectSettings(true)}
+              className="flex-shrink-0 px-2.5 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+            >
+              Project
+            </button>
+            <button
+              onClick={() => setShowAppSettings(true)}
+              className="flex-shrink-0 px-2.5 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+              title="Ctrl+,"
+            >
+              Settings
+            </button>
+            <div className="flex rounded border border-border overflow-hidden">
+              {viewButtons.map((btn, i) => (
+                <button
+                  key={btn.key}
+                  onClick={() => setMainView(btn.key)}
+                  className={`px-2 py-1 text-[11px] font-medium transition-colors ${
+                    mainView === btn.key
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                  } ${i > 0 ? "border-l border-border" : ""}`}
+                >
+                  {btn.label}
+                </button>
+              ))}
             </div>
-            <div className="flex items-center gap-2">
-              {mainView === "skills" && (
-                <>
-                  <button
-                    onClick={() => setShowSkillInstaller(true)}
-                    className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-                  >
-                    Import
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingSkill(null);
-                      setShowSkillEditor(true);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
-                  >
-                    + New Skill
-                  </button>
-                </>
-              )}
-              {mainView === "automations" && (
+            <div className="flex-1 min-w-0" />
+            {mainView === "skills" && (
+              <>
+                <button
+                  onClick={() => setShowSkillInstaller(true)}
+                  className="flex-shrink-0 px-2 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+                >
+                  Import
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingSkill(null);
+                    setShowSkillEditor(true);
+                  }}
+                  className="flex-shrink-0 px-2 py-1 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+                >
+                  + Skill
+                </button>
+              </>
+            )}
+            {mainView === "automations" && (
+              <>
                 <button
                   onClick={() => {
                     setEditingAutomation(null);
                     setShowAutomationEditor(true);
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
+                  className="flex-shrink-0 px-2 py-1 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
                 >
-                  + New Automation
+                  + Automation
                 </button>
-              )}
-              {mainView !== "skills" && mainView !== "inbox" && mainView !== "automations" && mainView !== "terminal" && (
-                <button
-                  onClick={() => setShowNewAgent(true)}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90"
-                >
-                  + New Agent
-                </button>
-              )}
-              {/* Export actions */}
-              {mainView === "thread" && activeThreadId && (
-                <button
-                  onClick={() => {
-                    ipc.invoke("export:threadMarkdown", activeThreadId).catch(console.error);
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-                >
-                  Export MD
-                </button>
-              )}
-              {mainView === "automations" && activeProjectId && (
-                <button
-                  onClick={() => {
-                    ipc.invoke("export:automationCsv", activeProjectId).catch(console.error);
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-                >
-                  Export CSV
-                </button>
-              )}
-              {activeProjectId && (
-                <button
-                  onClick={() => {
-                    ipc.invoke("export:costReport", activeProjectId).catch(console.error);
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-                  title="Export cost report"
-                >
-                  Costs
-                </button>
-              )}
-            </div>
+                {activeProjectId && (
+                  <button
+                    onClick={() => {
+                      ipc.invoke("export:automationCsv", activeProjectId).catch(console.error);
+                    }}
+                    className="flex-shrink-0 px-2 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+                  >
+                    CSV
+                  </button>
+                )}
+              </>
+            )}
+            {mainView !== "skills" && mainView !== "inbox" && mainView !== "automations" && mainView !== "terminal" && (
+              <button
+                onClick={() => setShowNewAgent(true)}
+                className="flex-shrink-0 px-2 py-1 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+              >
+                + Agent
+              </button>
+            )}
+            {mainView === "thread" && activeThreadId && (
+              <button
+                onClick={() => {
+                  ipc.invoke("export:threadMarkdown", activeThreadId).catch(console.error);
+                }}
+                className="flex-shrink-0 px-2 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+                title="Export Markdown"
+              >
+                MD
+              </button>
+            )}
+            <button
+              onClick={() => {
+                ipc.invoke("export:costReport", activeProjectId).catch(console.error);
+              }}
+              className="flex-shrink-0 px-2 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+              title="Export cost report"
+            >
+              $
+            </button>
           </div>
         )}
 
@@ -312,7 +309,7 @@ export const App: React.FC = () => {
       </div>
       </div>
 
-      <StatusBar onNotificationsClick={() => setShowNotifications(true)} />
+      <StatusBar activeThreadId={activeThreadId} onNotificationsClick={() => setShowNotifications(true)} />
 
       <NewAgentDialog
         open={showNewAgent}

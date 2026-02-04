@@ -1,18 +1,22 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAgentStore } from "@/stores/agentStore";
+import { ActivityIndicator } from "@/components/agents/ActivityIndicator";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ipc } from "@/lib/ipc-client";
-import type { Skill, StreamMessage, MessageContent } from "@/types/ipc";
+import type { Skill, StreamMessage, StreamingContentBlock, MessageContent, ErrorInfo } from "@/types/ipc";
 
 export const ThreadView: React.FC = () => {
   const {
     activeThreadId,
     messages,
-    streamingText,
+    streamingContent,
+    threadCosts,
+    errors,
     threads,
     sendMessage,
     handleStreamMessage,
     handleStatusChange,
+    handleError,
   } = useAgentStore();
   const [input, setInput] = useState("");
   const [showDiff, setShowDiff] = useState(false);
@@ -27,12 +31,48 @@ export const ThreadView: React.FC = () => {
   const threadMessages = activeThreadId
     ? messages.get(activeThreadId) || []
     : [];
-  const currentStreamingText = activeThreadId
-    ? streamingText.get(activeThreadId) || ""
-    : "";
+  const streamingBlocks = activeThreadId
+    ? streamingContent.get(activeThreadId) || []
+    : [];
+  const threadError = activeThreadId
+    ? errors.get(activeThreadId) || null
+    : null;
   const threadActiveSkills = activeThreadId
     ? activeSkills.get(activeThreadId) || []
     : [];
+  const threadCostData = activeThreadId
+    ? threadCosts.get(activeThreadId) || null
+    : null;
+
+  // Determine if the activity indicator should show
+  const isRunning = activeThread?.status === "running";
+  const showActivity =
+    isRunning &&
+    (streamingBlocks.length === 0 ||
+      (streamingBlocks.length > 0 &&
+        streamingBlocks[streamingBlocks.length - 1].type === "tool_use" &&
+        streamingBlocks[streamingBlocks.length - 1].isComplete));
+
+  const formatCost = (usd: number): string => {
+    if (usd < 0.01) return `$${usd.toFixed(4)}`;
+    return `$${usd.toFixed(2)}`;
+  };
+
+  const formatTokens = (count: number): string => {
+    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+    if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+    return String(count);
+  };
+
+  const shortModelName = (modelId: string): string => {
+    const m = modelId.match(/claude-(\w+)-([\d]+(?:-[\d]+)?)-\d{8}/);
+    if (m) {
+      const family = m[1];
+      const version = m[2].replace("-", ".");
+      return `${family}-${version}`;
+    }
+    return modelId.replace(/^claude-/, "");
+  };
 
   // Load skills once
   useEffect(() => {
@@ -54,26 +94,34 @@ export const ThreadView: React.FC = () => {
     [handleStatusChange]
   );
 
+  const onError = useCallback(
+    (threadId: string, error: ErrorInfo) => {
+      handleError(threadId, error.message);
+    },
+    [handleError]
+  );
+
   useEffect(() => {
     ipc.on("agent:message", onStreamMessage);
     ipc.on("agent:status", onStatusChange);
+    ipc.on("agent:error", onError);
     return () => {
       ipc.off("agent:message");
       ipc.off("agent:status");
+      ipc.off("agent:error");
     };
-  }, [onStreamMessage, onStatusChange]);
+  }, [onStreamMessage, onStatusChange, onError]);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [threadMessages, currentStreamingText]);
+  }, [threadMessages, streamingBlocks]);
 
   // Detect $skill-name syntax in input
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInput(val);
 
-    // Check for $ prefix to trigger skill suggestions
     const dollarMatch = val.match(/\$(\S*)$/);
     if (dollarMatch) {
       const query = dollarMatch[1].toLowerCase();
@@ -90,13 +138,11 @@ export const ThreadView: React.FC = () => {
   };
 
   const insertSkillReference = (skill: Skill) => {
-    // Replace the $partial with $skill-name
     const slugName = skill.name.toLowerCase().replace(/\s+/g, "-");
     const newInput = input.replace(/\$\S*$/, `$${slugName} `);
     setInput(newInput);
     setShowSuggestions(false);
 
-    // Track skill as active for this thread
     if (activeThreadId) {
       setActiveSkills((prev) => {
         const updated = new Map(prev);
@@ -145,6 +191,55 @@ export const ThreadView: React.FC = () => {
     }
   };
 
+  const renderContentBlock = (block: MessageContent, i: number) => (
+    <div key={i}>
+      {block.type === "text" && (
+        <p className="text-sm whitespace-pre-wrap">{block.text}</p>
+      )}
+      {block.type === "tool_use" && (
+        <div className="text-xs mt-1 p-2 bg-background/50 rounded border border-border">
+          <span className="font-mono font-semibold">
+            {block.toolName}
+          </span>
+        </div>
+      )}
+      {block.type === "tool_result" && (
+        <div className="text-xs mt-1 p-2 bg-background/50 rounded border border-border">
+          <pre className="whitespace-pre-wrap font-mono">
+            {block.toolOutput}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderStreamingBlock = (block: StreamingContentBlock, i: number, isLast: boolean) => (
+    <div key={block.id}>
+      {block.type === "text" && (
+        <p className="text-sm whitespace-pre-wrap">
+          {block.text}
+          {isLast && !block.isComplete && (
+            <span className="animate-pulse">|</span>
+          )}
+        </p>
+      )}
+      {block.type === "tool_use" && (
+        <div className="text-xs mt-1 p-2 bg-background/50 rounded border border-border">
+          <span className="font-mono font-semibold">
+            {block.toolName}
+          </span>
+        </div>
+      )}
+      {block.type === "tool_result" && (
+        <div className="text-xs mt-1 p-2 bg-background/50 rounded border border-border">
+          <pre className="whitespace-pre-wrap font-mono">
+            {block.toolOutput}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+
   if (!activeThreadId || !activeThread) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -161,11 +256,11 @@ export const ThreadView: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Thread header */}
-      <div className="px-4 py-3 border-b border-border flex items-center gap-3">
+      <div className="px-4 py-2 border-b border-border flex items-center gap-2 flex-shrink-0 min-w-0">
         <span
-          className={`w-2.5 h-2.5 rounded-full ${
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${
             activeThread.status === "running"
               ? "bg-green-500 animate-pulse"
               : activeThread.status === "completed"
@@ -175,7 +270,7 @@ export const ThreadView: React.FC = () => {
                   : "bg-yellow-500"
           }`}
         />
-        <h2 className="font-semibold text-foreground truncate flex-1">
+        <h2 className="text-sm font-semibold text-foreground truncate min-w-0 flex-1">
           {activeThread.title || "Untitled Thread"}
         </h2>
 
@@ -206,12 +301,12 @@ export const ThreadView: React.FC = () => {
         {activeThread.worktreePath && (
           <button
             onClick={() => setShowDiff(true)}
-            className="px-3 py-1 rounded-lg border border-border text-xs text-foreground hover:bg-accent"
+            className="flex-shrink-0 px-2 py-0.5 rounded border border-border text-xs text-foreground hover:bg-accent"
           >
-            View Diff
+            Diff
           </button>
         )}
-        <span className="text-xs text-muted-foreground capitalize">
+        <span className="flex-shrink-0 text-xs text-muted-foreground capitalize">
           {activeThread.status}
         </span>
       </div>
@@ -230,52 +325,95 @@ export const ThreadView: React.FC = () => {
                   : "bg-muted text-foreground"
               }`}
             >
-              {msg.content.map((block: MessageContent, i: number) => (
-                <div key={i}>
-                  {block.type === "text" && (
-                    <p className="text-sm whitespace-pre-wrap">{block.text}</p>
+              {msg.content.map((block: MessageContent, i: number) =>
+                renderContentBlock(block, i)
+              )}
+              {(msg.costUsd !== null || msg.tokensIn !== null || msg.tokensOut !== null) && (
+                <p className="text-xs mt-2 opacity-60 font-mono">
+                  {msg.tokensIn !== null && msg.tokensOut !== null && (
+                    <span>{msg.tokensIn.toLocaleString()}in / {msg.tokensOut.toLocaleString()}out</span>
                   )}
-                  {block.type === "tool_use" && (
-                    <div className="text-xs mt-1 p-2 bg-background/50 rounded border border-border">
-                      <span className="font-mono font-semibold">
-                        {block.toolName}
-                      </span>
-                    </div>
+                  {msg.costUsd !== null && (
+                    <span>{msg.tokensIn !== null ? " \u00B7 " : ""}${msg.costUsd.toFixed(4)}</span>
                   )}
-                  {block.type === "tool_result" && (
-                    <div className="text-xs mt-1 p-2 bg-background/50 rounded border border-border">
-                      <pre className="whitespace-pre-wrap font-mono">
-                        {block.toolOutput}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {msg.costUsd !== null && (
-                <p className="text-xs mt-2 opacity-60">
-                  Cost: ${msg.costUsd.toFixed(4)}
                 </p>
               )}
             </div>
           </div>
         ))}
 
-        {/* Streaming text */}
-        {currentStreamingText && (
+        {/* Streaming content blocks */}
+        {streamingBlocks.length > 0 && (
           <div className="flex justify-start">
             <div className="max-w-[80%] rounded-lg px-4 py-3 bg-muted text-foreground">
-              <p className="text-sm whitespace-pre-wrap">
-                {currentStreamingText}
-                <span className="animate-pulse">|</span>
-              </p>
+              {streamingBlocks.map((block, i) =>
+                renderStreamingBlock(block, i, i === streamingBlocks.length - 1)
+              )}
             </div>
+          </div>
+        )}
+
+        {/* Activity indicator */}
+        {showActivity && <ActivityIndicator />}
+
+        {/* Error banner */}
+        {threadError && activeThread?.status === "failed" && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
+            <p className="text-sm font-medium text-red-400">Agent Error</p>
+            <p className="text-sm text-red-300/80 mt-1 whitespace-pre-wrap font-mono">
+              {threadError}
+            </p>
+          </div>
+        )}
+
+        {/* Thread cost summary */}
+        {threadCostData && (activeThread.status === "completed" || activeThread.status === "failed") && threadCostData.totalCostUsd > 0 && (
+          <div className="rounded-lg border border-border bg-muted/40 px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-foreground">Usage Summary</span>
+              <span className="text-xs font-mono font-semibold text-foreground">
+                {formatCost(threadCostData.totalCostUsd)}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground mb-2">
+              <span className="font-mono">
+                {formatTokens(threadCostData.totalTokensIn)} in
+              </span>
+              <span className="font-mono">
+                {formatTokens(threadCostData.totalTokensOut)} out
+              </span>
+            </div>
+            {Object.keys(threadCostData.modelUsage).length > 0 && (
+              <div className="space-y-1.5 border-t border-border pt-2 mt-1">
+                {Object.entries(threadCostData.modelUsage)
+                  .sort(([, a], [, b]) => b.costUsd - a.costUsd)
+                  .map(([model, usage]) => {
+                    const cacheTokens = usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
+                    return (
+                      <div key={model} className="flex items-center justify-between text-[11px]">
+                        <span className="text-muted-foreground font-medium">
+                          {shortModelName(model)}
+                        </span>
+                        <span className="font-mono text-foreground">
+                          {formatTokens(usage.inputTokens)}in
+                          {cacheTokens > 0 && (
+                            <span className="text-muted-foreground"> +{formatTokens(cacheTokens)}cache</span>
+                          )}
+                          {" / "}{formatTokens(usage.outputTokens)}out
+                          <span className="text-muted-foreground ml-2">{formatCost(usage.costUsd)}</span>
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input bar */}
-      <div className="p-4 border-t border-border relative">
+      <div className="p-3 border-t border-border relative flex-shrink-0">
         {/* Skill suggestions popup */}
         {showSuggestions && (
           <div className="absolute bottom-full left-4 right-4 mb-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-auto">
@@ -306,7 +444,7 @@ export const ThreadView: React.FC = () => {
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim() || activeThread.status !== "completed"}
+            disabled={!input.trim() || activeThread.status === "running"}
             className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send

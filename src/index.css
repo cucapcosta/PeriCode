@@ -25,23 +25,24 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* VS Code Dark+ theme */
+    --background: 0 0% 11.8%;
+    --foreground: 0 0% 80%;
+    --card: 240 2% 14.5%;
+    --card-foreground: 0 0% 80%;
+    --primary: 207 100% 41.6%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 2% 14.5%;
+    --secondary-foreground: 0 0% 80%;
+    --muted: 0 0% 20%;
+    --muted-foreground: 0 0% 52.2%;
+    --accent: 207.5 51.5% 30.8%;
+    --accent-foreground: 0 0% 90%;
+    --destructive: 0 86% 61%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 23.5%;
+    --input: 0 0% 23.5%;
+    --ring: 203 100% 40%;
     --radius: 0.5rem;
   }
 }
@@ -53,8 +54,8 @@
   body {
     @apply bg-background text-foreground;
     font-family:
-      ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-      Roboto, sans-serif;
+      "Segoe WPC", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+      Ubuntu, "Droid Sans", sans-serif;
   }
 }
 

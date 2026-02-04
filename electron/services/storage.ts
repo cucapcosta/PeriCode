@@ -252,6 +252,15 @@ export const storage = {
     saveToFile();
   },
 
+  markStaleRunningThreads(): void {
+    const now = new Date().toISOString();
+    getDb().run(
+      "UPDATE threads SET status = 'failed', updated_at = ? WHERE status = 'running'",
+      [now]
+    );
+    saveToFile();
+  },
+
   deleteThread(id: string): void {
     getDb().run("DELETE FROM messages WHERE thread_id = ?", [id]);
     getDb().run("DELETE FROM threads WHERE id = ?", [id]);

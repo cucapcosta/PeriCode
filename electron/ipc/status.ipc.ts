@@ -3,10 +3,11 @@ import { agentOrchestrator } from "../services/agent-orchestrator";
 import { automationScheduler } from "../services/automation-scheduler";
 import { notificationService } from "../services/notification-service";
 import { storage } from "../services/storage";
+import { detectCli } from "../utils/cli-detect";
 import type { StatusInfo, AppNotification } from "../../src/types/ipc";
 
 export function registerStatusHandlers(): void {
-  ipcMain.handle("status:getInfo", (): StatusInfo => {
+  ipcMain.handle("status:getInfo", async (): Promise<StatusInfo> => {
     // Agent stats
     const runningAgents = agentOrchestrator.getRunningAgents();
     const queuedAgents = agentOrchestrator.getQueuedCount();
@@ -20,8 +21,18 @@ export function registerStatusHandlers(): void {
       totalTokensOut += agent.tokensOut;
     }
 
-    // API key status
-    const hasKey = !!process.env.ANTHROPIC_API_KEY;
+    // Per-model usage (global accumulator includes all agents, past and present)
+    const modelUsage = agentOrchestrator.getGlobalModelUsage();
+
+    // CLI status
+    let customPath: string | undefined;
+    try {
+      const settings = storage.getAppSettings();
+      customPath = settings.claudeCliPath ?? undefined;
+    } catch {
+      // ignore
+    }
+    const cli = await detectCli(customPath);
 
     // Automation stats
     const scheduled = automationScheduler.getScheduled();
@@ -33,8 +44,6 @@ export function registerStatusHandlers(): void {
       if (!task.active) continue;
       const automation = storage.getAutomation(task.automationId);
       if (automation && automation.triggerType === "cron" && automation.schedule) {
-        // For cron automations, estimate next run as "has cron schedule"
-        // Full next-run calculation would require cron-parser; use schedule string
         nextAutomationRun = automation.schedule;
         break;
       }
@@ -46,8 +55,9 @@ export function registerStatusHandlers(): void {
       totalCostUsd,
       totalTokensIn,
       totalTokensOut,
-      apiKeyValid: hasKey,
-      apiKeyProvider: "anthropic",
+      modelUsage,
+      cliAvailable: cli.available,
+      cliVersion: cli.version,
       activeAutomations,
       nextAutomationRun,
     };

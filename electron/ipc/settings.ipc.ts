@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { storage } from "../services/storage";
+import { detectCli } from "../utils/cli-detect";
 import type { AppSettings } from "../../src/types/ipc";
 
 export function registerSettingsHandlers(): void {
@@ -15,10 +16,15 @@ export function registerSettingsHandlers(): void {
   );
 
   ipcMain.handle(
-    "settings:getApiKeyStatus",
-    (): { valid: boolean; provider: string } => {
-      const hasKey = !!process.env.ANTHROPIC_API_KEY;
-      return { valid: hasKey, provider: "anthropic" };
+    "settings:getCliStatus",
+    async (): Promise<{
+      available: boolean;
+      version: string | null;
+      path: string | null;
+    }> => {
+      const settings = storage.getAppSettings();
+      const customPath = settings.claudeCliPath ?? undefined;
+      return detectCli(customPath);
     }
   );
 }

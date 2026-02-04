@@ -2,7 +2,25 @@ import React, { useState, useEffect } from "react";
 import { useAgentStore } from "@/stores/agentStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { ipc } from "@/lib/ipc-client";
-import type { Skill } from "@/types/ipc";
+import type { Skill, AppSettings } from "@/types/ipc";
+
+interface ToolOption {
+  name: string;
+  label: string;
+  description: string;
+  risky: boolean;
+}
+
+const AVAILABLE_TOOLS: ToolOption[] = [
+  { name: "Read", label: "Read", description: "Read files", risky: false },
+  { name: "Glob", label: "Glob", description: "Find files by pattern", risky: false },
+  { name: "Grep", label: "Grep", description: "Search file contents", risky: false },
+  { name: "WebSearch", label: "WebSearch", description: "Search the web", risky: false },
+  { name: "WebFetch", label: "WebFetch", description: "Fetch web content", risky: false },
+  { name: "Edit", label: "Edit", description: "Edit existing files", risky: true },
+  { name: "Write", label: "Write", description: "Create / overwrite files", risky: true },
+  { name: "Bash", label: "Bash", description: "Execute shell commands", risky: true },
+];
 
 interface NewAgentDialogProps {
   open: boolean;
@@ -18,12 +36,18 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [useWorktree, setUseWorktree] = useState(false);
+  const [permissionMode, setPermissionMode] = useState<AppSettings["permissionMode"]>("acceptEdits");
+  const [selectedTools, setSelectedTools] = useState<Set<string>>(
+    new Set(AVAILABLE_TOOLS.map((t) => t.name))
+  );
+  const [showToolSection, setShowToolSection] = useState(false);
   const { launchAgent } = useAgentStore();
   const { activeProjectId } = useProjectStore();
 
   useEffect(() => {
     if (open) {
       loadSkills();
+      loadSettings();
     }
   }, [open]);
 
@@ -36,10 +60,43 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
     }
   };
 
+  const loadSettings = async () => {
+    try {
+      const settings = await ipc.invoke("settings:get");
+      setPermissionMode(settings.permissionMode);
+      // Auto-expand tool section so user sees what's allowed
+      if (settings.permissionMode === "ask") {
+        setShowToolSection(true);
+      }
+    } catch {
+      // default stays
+    }
+  };
+
   const toggleSkill = (id: string) => {
     setSelectedSkillIds((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
     );
+  };
+
+  const toggleTool = (name: string) => {
+    setSelectedTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      return next;
+    });
+  };
+
+  const selectAllTools = () => {
+    setSelectedTools(new Set(AVAILABLE_TOOLS.map((t) => t.name)));
+  };
+
+  const deselectAllTools = () => {
+    setSelectedTools(new Set());
   };
 
   if (!open) return null;
@@ -55,10 +112,18 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
         prompt: prompt.trim(),
         skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
         useWorktree,
+        allowedTools:
+          permissionMode === "ask" && selectedTools.size > 0
+            ? Array.from(selectedTools)
+            : undefined,
       });
       setPrompt("");
       setSelectedSkillIds([]);
       setUseWorktree(false);
+      setSelectedTools(
+        new Set(AVAILABLE_TOOLS.map((t) => t.name))
+      );
+      setShowToolSection(false);
       onClose();
     } catch (err) {
       console.error("Failed to launch agent:", err);
@@ -87,7 +152,7 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
       />
 
       {/* Dialog */}
-      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-lg mx-4 p-6">
+      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-lg font-semibold text-foreground mb-4">
           New Agent
         </h2>
@@ -140,6 +205,75 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
                 <p className="text-xs text-muted-foreground mt-1">
                   {selectedSkillIds.length} skill{selectedSkillIds.length !== 1 ? "s" : ""} selected
                 </p>
+              )}
+            </div>
+          )}
+
+          {/* Tool selection (only when permission mode is "ask") */}
+          {permissionMode === "ask" && (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setShowToolSection(!showToolSection)}
+                className="flex items-center gap-2 text-sm font-medium text-foreground mb-2"
+              >
+                <span
+                  className="text-xs transition-transform"
+                  style={{ transform: showToolSection ? "rotate(90deg)" : "rotate(0deg)" }}
+                >
+                  &#9654;
+                </span>
+                Allowed Tools
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({selectedTools.size}/{AVAILABLE_TOOLS.length})
+                </span>
+              </button>
+
+              {showToolSection && (
+                <div className="border border-border rounded-lg p-3 space-y-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={selectAllTools}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Select all
+                    </button>
+                    <span className="text-muted-foreground text-xs">|</span>
+                    <button
+                      type="button"
+                      onClick={deselectAllTools}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Deselect all
+                    </button>
+                  </div>
+
+                  {AVAILABLE_TOOLS.map((tool) => (
+                    <label
+                      key={tool.name}
+                      className="flex items-center gap-2 cursor-pointer group"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedTools.has(tool.name)}
+                        onChange={() => toggleTool(tool.name)}
+                        className="rounded border-border"
+                      />
+                      <span className="text-sm text-foreground font-medium font-mono">
+                        {tool.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {tool.description}
+                      </span>
+                      {tool.risky && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 font-medium">
+                          risky
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           )}

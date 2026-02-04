@@ -14,3 +14,4 @@ coverage/
 Thumbs.db
 .claude/ralph-loop.local.md
 .claude/settings.local.json
+temp/

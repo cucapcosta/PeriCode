@@ -16,6 +16,7 @@ export const Sidebar: React.FC = () => {
     setActiveThread,
     activeThreadId,
     cancelAgent,
+    deleteThread,
   } = useAgentStore();
   const [addingProject, setAddingProject] = useState(false);
 
@@ -145,7 +146,7 @@ export const Sidebar: React.FC = () => {
                         {thread.title || "Untitled"}
                       </span>
                       {/* Quick actions */}
-                      {thread.status === "running" && (
+                      {thread.status === "running" ? (
                         <span
                           role="button"
                           tabIndex={0}
@@ -163,6 +164,25 @@ export const Sidebar: React.FC = () => {
                           title="Cancel agent"
                         >
                           Stop
+                        </span>
+                      ) : (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteThread(thread.id);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.stopPropagation();
+                              deleteThread(thread.id);
+                            }
+                          }}
+                          className="hidden group-hover:inline-flex text-xs text-muted-foreground hover:text-red-400 flex-shrink-0"
+                          title="Delete thread"
+                        >
+                          Del
                         </span>
                       )}
                     </div>

@@ -17,7 +17,7 @@ const AVAILABLE_TOOLS = [
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
-  const [apiKeyStatus, setApiKeyStatus] = useState<{ valid: boolean; provider: string } | null>(null);
+  const [cliStatus, setCliStatus] = useState<{ available: boolean; version: string | null; path: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -28,12 +28,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
 
   const loadSettings = async () => {
     try {
-      const [s, api] = await Promise.all([
+      const [s, cli] = await Promise.all([
         ipc.invoke("settings:get"),
-        ipc.invoke("settings:getApiKeyStatus"),
+        ipc.invoke("settings:getCliStatus"),
       ]);
       setSettings(s);
-      setApiKeyStatus(api);
+      setCliStatus(cli);
     } catch (err) {
       console.error("Failed to load settings:", err);
     }
@@ -127,21 +127,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
                     </select>
                   </SettingGroup>
 
-                  <SettingGroup label="API Key Status">
+                  <SettingGroup label="Claude CLI Status">
                     <div className="flex items-center gap-2 text-sm">
                       <span
                         className={`inline-flex rounded-full h-2 w-2 ${
-                          apiKeyStatus?.valid ? "bg-green-500" : "bg-red-500"
+                          cliStatus?.available ? "bg-green-500" : "bg-red-500"
                         }`}
                       />
                       <span className="text-foreground">
-                        {apiKeyStatus?.valid
-                          ? `Connected (${apiKeyStatus.provider})`
-                          : "Not configured"}
+                        {cliStatus?.available
+                          ? `Detected (${cliStatus.version ?? "unknown version"})`
+                          : "Not found"}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Set ANTHROPIC_API_KEY environment variable to configure.
+                      Install Claude Code CLI or set path in Advanced tab.
                     </p>
                   </SettingGroup>
                 </div>

@@ -5,31 +5,47 @@ import type {
   Message,
   AgentLaunchConfig,
   StreamMessage,
+  StreamingContentBlock,
+  ModelTokenUsage,
 } from "@/types/ipc";
+
+interface ThreadCostState {
+  totalCostUsd: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  modelUsage: Record<string, ModelTokenUsage>;
+}
 
 interface AgentState {
   threads: ThreadInfo[];
   activeThreadId: string | null;
   messages: Map<string, Message[]>;
-  streamingText: Map<string, string>;
+  streamingContent: Map<string, StreamingContentBlock[]>;
+  threadCosts: Map<string, ThreadCostState>;
   loading: boolean;
 
   loadThreads: (projectId: string) => Promise<void>;
   launchAgent: (config: AgentLaunchConfig) => Promise<ThreadInfo>;
   cancelAgent: (threadId: string) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
   sendMessage: (threadId: string, message: string) => Promise<void>;
   setActiveThread: (threadId: string | null) => void;
   loadMessages: (threadId: string) => Promise<void>;
 
   handleStreamMessage: (threadId: string, message: StreamMessage) => void;
   handleStatusChange: (threadId: string, status: string) => void;
+  handleError: (threadId: string, errorMessage: string) => void;
+
+  errors: Map<string, string>;
 }
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   threads: [],
   activeThreadId: null,
   messages: new Map(),
-  streamingText: new Map(),
+  streamingContent: new Map(),
+  threadCosts: new Map(),
+  errors: new Map(),
   loading: false,
 
   loadThreads: async (projectId: string) => {
@@ -48,7 +64,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       threads: [thread, ...state.threads],
       activeThreadId: thread.id,
     }));
-    // Add the initial user message to local state
     const userMsg: Message = {
       id: crypto.randomUUID(),
       threadId: thread.id,
@@ -69,8 +84,31 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     await ipc.invoke("agent:cancel", threadId);
   },
 
+  deleteThread: async (threadId: string) => {
+    await ipc.invoke("thread:delete", threadId);
+    set((state) => {
+      const threads = state.threads.filter((t) => t.id !== threadId);
+      const messages = new Map(state.messages);
+      messages.delete(threadId);
+      const streamingContent = new Map(state.streamingContent);
+      streamingContent.delete(threadId);
+      const threadCosts = new Map(state.threadCosts);
+      threadCosts.delete(threadId);
+      const errors = new Map(state.errors);
+      errors.delete(threadId);
+      return {
+        threads,
+        messages,
+        streamingContent,
+        threadCosts,
+        errors,
+        activeThreadId:
+          state.activeThreadId === threadId ? null : state.activeThreadId,
+      };
+    });
+  },
+
   sendMessage: async (threadId: string, message: string) => {
-    // Add user message to local state immediately
     const userMsg: Message = {
       id: crypto.randomUUID(),
       threadId,
@@ -109,10 +147,147 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
   handleStreamMessage: (threadId: string, message: StreamMessage) => {
     if (message.type === "text" && message.text) {
-      const streaming = new Map(get().streamingText);
-      const current = streaming.get(threadId) || "";
-      streaming.set(threadId, current + message.text);
-      set({ streamingText: streaming });
+      const streaming = new Map(get().streamingContent);
+      const blocks = [...(streaming.get(threadId) || [])];
+      const blockIndex = message.blockIndex ?? 0;
+
+      // Find the text block at this blockIndex
+      let block = blocks.find(
+        (b) => b.type === "text" && b.id === `text-${blockIndex}`
+      );
+      if (!block) {
+        block = {
+          id: `text-${blockIndex}`,
+          type: "text",
+          text: "",
+          isComplete: false,
+        };
+        blocks.push(block);
+      } else {
+        // Clone for immutability
+        const idx = blocks.indexOf(block);
+        block = { ...block };
+        blocks[idx] = block;
+      }
+
+      // Append the delta (orchestrator now sends deltas, not full text)
+      block.text = (block.text ?? "") + message.text;
+
+      streaming.set(threadId, blocks);
+      set({ streamingContent: streaming });
+    }
+
+    if (message.type === "tool_use") {
+      const streaming = new Map(get().streamingContent);
+      const blocks = [...(streaming.get(threadId) || [])];
+      const blockIndex = message.blockIndex ?? blocks.length;
+
+      // Mark previous text block as complete
+      for (const b of blocks) {
+        if (b.type === "text" && !b.isComplete) {
+          b.isComplete = true;
+        }
+      }
+
+      blocks.push({
+        id: `tool-${blockIndex}`,
+        type: "tool_use",
+        toolName: message.toolName,
+        toolInput: message.toolInput,
+        isComplete: true,
+      });
+
+      streaming.set(threadId, blocks);
+      set({ streamingContent: streaming });
+    }
+
+    if (message.type === "tool_result") {
+      const streaming = new Map(get().streamingContent);
+      const blocks = [...(streaming.get(threadId) || [])];
+
+      blocks.push({
+        id: `result-${blocks.length}`,
+        type: "tool_result",
+        toolOutput: message.toolOutput,
+        isComplete: true,
+      });
+
+      streaming.set(threadId, blocks);
+      set({ streamingContent: streaming });
+    }
+
+    if (message.type === "cost") {
+      const costs = new Map(get().threadCosts);
+      const current = costs.get(threadId) || {
+        totalCostUsd: 0,
+        totalTokensIn: 0,
+        totalTokensOut: 0,
+        modelUsage: {},
+      };
+      current.totalCostUsd += message.costUsd ?? 0;
+      current.totalTokensIn += message.tokensIn ?? 0;
+      current.totalTokensOut += message.tokensOut ?? 0;
+      if (message.modelUsage) {
+        for (const [model, usage] of Object.entries(message.modelUsage)) {
+          const existing = current.modelUsage[model];
+          if (existing) {
+            existing.inputTokens += usage.inputTokens;
+            existing.outputTokens += usage.outputTokens;
+            existing.cacheReadInputTokens += usage.cacheReadInputTokens;
+            existing.cacheCreationInputTokens += usage.cacheCreationInputTokens;
+            existing.costUsd += usage.costUsd;
+          } else {
+            current.modelUsage[model] = { ...usage };
+          }
+        }
+      }
+      costs.set(threadId, { ...current });
+      set({ threadCosts: costs });
+    }
+
+    if (message.type === "status" && (message.status === "completed" || message.status === "failed")) {
+      // Promote streaming blocks to a finalized Message
+      const streaming = new Map(get().streamingContent);
+      const blocks = streaming.get(threadId);
+      if (blocks && blocks.length > 0) {
+        const content = blocks
+          .filter((b) => b.type === "text" ? (b.text && b.text.length > 0) : true)
+          .map((b) => {
+            if (b.type === "text") {
+              return { type: "text" as const, text: b.text };
+            } else if (b.type === "tool_use") {
+              return {
+                type: "tool_use" as const,
+                toolName: b.toolName,
+                toolInput: b.toolInput,
+              };
+            } else {
+              return {
+                type: "tool_result" as const,
+                toolOutput: b.toolOutput,
+              };
+            }
+          });
+
+        if (content.length > 0) {
+          const msgs = new Map(get().messages);
+          const existing = msgs.get(threadId) || [];
+          const finalMsg: Message = {
+            id: crypto.randomUUID(),
+            threadId,
+            role: "assistant",
+            content,
+            costUsd: null,
+            tokensIn: null,
+            tokensOut: null,
+            createdAt: new Date().toISOString(),
+          };
+          msgs.set(threadId, [...existing, finalMsg]);
+          set({ messages: msgs });
+        }
+      }
+      streaming.delete(threadId);
+      set({ streamingContent: streaming });
     }
   },
 
@@ -125,12 +300,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       ),
     }));
 
-    // When completed, flush streaming text to messages and reload
+    // No longer reload from DB on completion — streaming blocks are promoted
+    // to messages inline via handleStreamMessage's "status" handler.
+    // Only clean up if status is terminal and streaming wasn't flushed yet.
     if (status === "completed" || status === "failed") {
-      const streaming = new Map(get().streamingText);
-      streaming.delete(threadId);
-      set({ streamingText: streaming });
-      get().loadMessages(threadId);
+      const streaming = new Map(get().streamingContent);
+      if (streaming.has(threadId)) {
+        streaming.delete(threadId);
+        set({ streamingContent: streaming });
+      }
     }
+  },
+
+  handleError: (threadId: string, errorMessage: string) => {
+    const errors = new Map(get().errors);
+    errors.set(threadId, errorMessage);
+    set({ errors });
   },
 }));

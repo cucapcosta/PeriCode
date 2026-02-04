@@ -1,14 +1,16 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { BrowserWindow } from "electron";
+import { spawnClaude } from "./claude-cli";
 import { storage } from "./storage";
 import { sessionRegistry } from "./session-registry";
 import { worktreeManager } from "./worktree-manager";
 import { logger } from "../utils/logger";
 import type {
   AgentLaunchConfig,
+  AppSettings,
   ThreadInfo,
   MessageContent,
   StreamMessage,
+  ModelTokenUsage,
 } from "../../src/types/ipc";
 
 // ── Types ──────────────────────────────────────────────────
@@ -28,6 +30,7 @@ export interface AgentEvent {
   costUsd?: number;
   tokensIn?: number;
   tokensOut?: number;
+  errorMessage?: string;
 }
 
 type EventHandler = (event: AgentEvent) => void;
@@ -35,10 +38,11 @@ type EventHandler = (event: AgentEvent) => void;
 interface ActiveAgent {
   threadId: string;
   projectId: string;
-  abortController: AbortController;
+  kill: () => void;
   costUsd: number;
   tokensIn: number;
   tokensOut: number;
+  modelUsage: Record<string, ModelTokenUsage>;
 }
 
 interface QueuedAgent {
@@ -59,6 +63,9 @@ const eventHandlers: Map<AgentEventType, EventHandler[]> = new Map();
 // Budget tracking: per-project aggregate costs
 const projectCosts: Map<string, number> = new Map();
 
+// Global per-model token usage accumulator
+const globalModelUsage: Record<string, ModelTokenUsage> = {};
+
 // ── Helpers ────────────────────────────────────────────────
 
 function sendToRenderer(channel: string, ...args: unknown[]): void {
@@ -78,22 +85,51 @@ function emitEvent(event: AgentEvent): void {
   }
 }
 
+function mergeModelUsage(
+  target: Record<string, ModelTokenUsage>,
+  source: Record<string, ModelTokenUsage>
+): void {
+  for (const [model, usage] of Object.entries(source)) {
+    const existing = target[model];
+    if (existing) {
+      existing.inputTokens += usage.inputTokens;
+      existing.outputTokens += usage.outputTokens;
+      existing.cacheReadInputTokens += usage.cacheReadInputTokens;
+      existing.cacheCreationInputTokens += usage.cacheCreationInputTokens;
+      existing.costUsd += usage.costUsd;
+    } else {
+      target[model] = { ...usage };
+    }
+  }
+}
+
 function trackCost(
   threadId: string,
   projectId: string,
   costUsd: number,
   tokensIn: number,
-  tokensOut: number
+  tokensOut: number,
+  modelUsage?: Record<string, ModelTokenUsage>
 ): void {
   const agent = activeAgents.get(threadId);
   if (agent) {
     agent.costUsd += costUsd;
     agent.tokensIn += tokensIn;
     agent.tokensOut += tokensOut;
+    if (modelUsage) {
+      mergeModelUsage(agent.modelUsage, modelUsage);
+    }
   }
 
   const currentProjectCost = projectCosts.get(projectId) ?? 0;
   projectCosts.set(projectId, currentProjectCost + costUsd);
+
+  if (modelUsage) {
+    mergeModelUsage(globalModelUsage, modelUsage);
+  }
+
+  // Notify renderer for StatusBar immediate refresh
+  sendToRenderer("agent:cost", threadId, { threadCostUsd: costUsd, sessionCostUsd: 0 });
 
   emitEvent({
     type: "cost_update",
@@ -123,6 +159,41 @@ async function processQueue(): Promise<void> {
         err instanceof Error ? err : new Error("Agent launch failed")
       );
     }
+  }
+}
+
+function getClaudeCliPath(): string | undefined {
+  try {
+    const settings = storage.getAppSettings();
+    return settings.claudeCliPath ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const DEFAULT_TOOLS = [
+  "Read", "Edit", "Write", "Bash",
+  "Glob", "Grep", "WebSearch", "WebFetch",
+];
+
+function resolvePermissionConfig(
+  settings: AppSettings,
+  configAllowedTools?: string[]
+): { permissionMode: string; allowedTools: string[] } {
+  switch (settings.permissionMode) {
+    case "full":
+      return { permissionMode: "bypassPermissions", allowedTools: DEFAULT_TOOLS };
+    case "ask":
+      // Use pre-flight tool selection if provided, otherwise default tools
+      return {
+        permissionMode: "acceptEdits",
+        allowedTools: configAllowedTools && configAllowedTools.length > 0
+          ? configAllowedTools
+          : DEFAULT_TOOLS,
+      };
+    case "acceptEdits":
+    default:
+      return { permissionMode: "acceptEdits", allowedTools: DEFAULT_TOOLS };
   }
 }
 
@@ -183,195 +254,248 @@ async function launchImmediate(
   );
 
   // Start the agent in background
-  const abortController = new AbortController();
+  const project = storage.getProject(config.projectId);
+  const cwd = worktreePath ?? project?.path ?? process.cwd();
+
+  // Determine permission mode and tool list from settings
+  const appSettings = storage.getAppSettings();
+  const { permissionMode: resolvedMode, allowedTools: resolvedTools } =
+    resolvePermissionConfig(appSettings, config.allowedTools);
+
+  const { events, kill } = spawnClaude({
+    prompt: config.prompt,
+    cwd,
+    model: config.model,
+    permissionMode: resolvedMode,
+    allowedTools: resolvedTools,
+    claudePath: getClaudeCliPath(),
+  });
+
   activeAgents.set(threadId, {
     threadId,
     projectId: config.projectId,
-    abortController,
+    kill,
     costUsd: 0,
     tokensIn: 0,
     tokensOut: 0,
+    modelUsage: {},
   });
 
   emitEvent({ type: "launched", threadId });
 
-  runAgent(threadId, config, abortController.signal, worktreePath).catch(
-    (err) => {
-      logger.error("agent-orchestrator", `Agent ${threadId} failed`, err);
-    }
-  );
+  runAgent(threadId, config, events).catch((err) => {
+    logger.error("agent-orchestrator", `Agent ${threadId} failed`, err);
+  });
 
   return thread;
+}
+
+/** Shared streaming logic used by both runAgent and sendMessage */
+function processAssistantEvent(
+  threadId: string,
+  message: import("./claude-cli").CliEvent,
+  state: { lastSeenTextLength: number; currentBlockIndex: number; seenToolUseIds: Set<string> }
+): void {
+  // Handle content_block partials (from --include-partial-messages)
+  if (message.content_block) {
+    if (message.content_block.type === "text" && message.content_block.text) {
+      const fullText = message.content_block.text;
+      const delta = fullText.slice(state.lastSeenTextLength);
+      state.lastSeenTextLength = fullText.length;
+
+      if (delta) {
+        sendToRenderer("agent:message", threadId, {
+          type: "text",
+          text: delta,
+          blockIndex: state.currentBlockIndex,
+        } as StreamMessage);
+      }
+    }
+    return;
+  }
+
+  // Handle full message.content snapshots
+  const apiMessage = message.message;
+  if (!apiMessage || !Array.isArray(apiMessage.content)) return;
+
+  for (const block of apiMessage.content) {
+    if (block.type === "text") {
+      const fullText = block.text ?? "";
+      const delta = fullText.slice(state.lastSeenTextLength);
+      state.lastSeenTextLength = fullText.length;
+
+      if (delta) {
+        sendToRenderer("agent:message", threadId, {
+          type: "text",
+          text: delta,
+          blockIndex: state.currentBlockIndex,
+        } as StreamMessage);
+      }
+    } else if (block.type === "tool_use") {
+      // Deduplicate: only send tool_use once per unique tool call
+      const toolId = (block as Record<string, unknown>).id as string | undefined;
+      const dedupeKey = toolId ?? `${block.name}-${JSON.stringify(block.input)}`;
+      if (state.seenToolUseIds.has(dedupeKey)) continue;
+      state.seenToolUseIds.add(dedupeKey);
+
+      // New tool_use block → advance block index, reset text length
+      state.currentBlockIndex++;
+      state.lastSeenTextLength = 0;
+
+      sendToRenderer("agent:message", threadId, {
+        type: "tool_use",
+        toolName: block.name,
+        toolInput: block.input as Record<string, unknown>,
+        blockIndex: state.currentBlockIndex,
+      } as StreamMessage);
+
+      // Prepare for next text block after this tool
+      state.currentBlockIndex++;
+    }
+  }
+}
+
+function processResultEvent(
+  threadId: string,
+  projectId: string,
+  message: import("./claude-cli").CliEvent
+): void {
+  const resultCost = message.total_cost_usd ?? 0;
+  const resultContent: MessageContent[] = [
+    { type: "text", text: message.result ?? "" },
+  ];
+
+  const parsedModelUsage: Record<string, ModelTokenUsage> | undefined =
+    message.modelUsage
+      ? Object.fromEntries(
+          Object.entries(message.modelUsage).map(([model, u]) => [
+            model,
+            {
+              inputTokens: u.inputTokens ?? 0,
+              outputTokens: u.outputTokens ?? 0,
+              cacheReadInputTokens: u.cacheReadInputTokens ?? 0,
+              cacheCreationInputTokens: u.cacheCreationInputTokens ?? 0,
+              costUsd: u.costUSD ?? 0,
+            },
+          ])
+        )
+      : undefined;
+
+  // Derive total tokens from per-model breakdown when available.
+  // result.usage only reflects the last API turn, not the session total.
+  let totalTokensIn = message.usage?.input_tokens ?? 0;
+  let totalTokensOut = message.usage?.output_tokens ?? 0;
+  if (parsedModelUsage) {
+    let sumIn = 0;
+    let sumOut = 0;
+    for (const u of Object.values(parsedModelUsage)) {
+      sumIn += u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens;
+      sumOut += u.outputTokens;
+    }
+    if (sumIn > 0) totalTokensIn = sumIn;
+    if (sumOut > 0) totalTokensOut = sumOut;
+  }
+
+  storage.addMessage(
+    crypto.randomUUID(),
+    threadId,
+    "assistant",
+    resultContent,
+    resultCost,
+    totalTokensIn,
+    totalTokensOut
+  );
+
+  trackCost(
+    threadId,
+    projectId,
+    resultCost,
+    totalTokensIn,
+    totalTokensOut,
+    parsedModelUsage
+  );
+
+  sendToRenderer("agent:message", threadId, {
+    type: "cost",
+    costUsd: resultCost,
+    tokensIn: totalTokensIn,
+    tokensOut: totalTokensOut,
+    modelUsage: parsedModelUsage,
+  } as StreamMessage);
+
+  const isSuccess = message.subtype === "success";
+  const finalStatus = isSuccess ? "completed" : "failed";
+  storage.updateThreadStatus(threadId, finalStatus);
+
+  sendToRenderer("agent:status", threadId, finalStatus);
+  sendToRenderer("agent:message", threadId, {
+    type: "status",
+    status: finalStatus,
+  } as StreamMessage);
+
+  emitEvent({
+    type: isSuccess ? "completed" : "failed",
+    threadId,
+    costUsd: resultCost,
+  });
+
+  logger.info(
+    "agent-orchestrator",
+    `Agent ${threadId} finished: ${message.subtype} ($${resultCost.toFixed(4)})`
+  );
 }
 
 async function runAgent(
   threadId: string,
   config: AgentLaunchConfig,
-  signal: AbortSignal,
-  worktreePath: string | null
+  events: AsyncGenerator<import("./claude-cli").CliEvent, void, undefined>
 ): Promise<void> {
+  let receivedResult = false;
+  const streamState = { lastSeenTextLength: 0, currentBlockIndex: 0, seenToolUseIds: new Set<string>() };
+
   try {
-    const project = storage.getProject(config.projectId);
-    // Use worktree path if available, otherwise project path
-    const cwd = worktreePath ?? project?.path ?? process.cwd();
-
-    const agentQuery = query({
-      prompt: config.prompt,
-      options: {
-        model: config.model,
-        cwd,
-        permissionMode: "acceptEdits",
-        allowedTools: [
-          "Read",
-          "Edit",
-          "Write",
-          "Bash",
-          "Glob",
-          "Grep",
-          "WebSearch",
-          "WebFetch",
-        ],
-        includePartialMessages: true,
-      },
-    });
-
-    for await (const message of agentQuery) {
-      if (signal.aborted) {
-        await agentQuery.interrupt();
-        break;
-      }
-
+    for await (const message of events) {
       switch (message.type) {
         case "system": {
-          if (message.subtype === "init") {
-            const sessionId = message.session_id;
-            sessionRegistry.register(threadId, sessionId);
-            storage.updateThreadSession(threadId, sessionId);
+          if (message.subtype === "init" && message.session_id) {
+            sessionRegistry.register(threadId, message.session_id);
+            storage.updateThreadSession(threadId, message.session_id);
             logger.info(
               "agent-orchestrator",
-              `Agent ${threadId} started with session ${sessionId}`
+              `Agent ${threadId} started with session ${message.session_id}`
             );
           }
           break;
         }
 
         case "assistant": {
-          const contentBlocks: MessageContent[] = [];
-          const apiMessage = message.message;
-
-          if (apiMessage && Array.isArray(apiMessage.content)) {
-            for (const block of apiMessage.content) {
-              if (block.type === "text") {
-                contentBlocks.push({ type: "text", text: block.text });
-              } else if (block.type === "tool_use") {
-                contentBlocks.push({
-                  type: "tool_use",
-                  toolName: block.name,
-                  toolInput: block.input as Record<string, unknown>,
-                });
-              }
-            }
-          }
-
-          if (contentBlocks.length > 0) {
-            storage.addMessage(
-              crypto.randomUUID(),
-              threadId,
-              "assistant",
-              contentBlocks,
-              null,
-              null,
-              null
-            );
-          }
-
-          for (const block of contentBlocks) {
-            const streamMsg: StreamMessage = {
-              type: block.type === "text" ? "text" : "tool_use",
-              text: block.text,
-              toolName: block.toolName,
-              toolInput: block.toolInput,
-            };
-            sendToRenderer("agent:message", threadId, streamMsg);
-          }
-          break;
-        }
-
-        case "stream_event": {
-          const event = message.event;
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            const streamMsg: StreamMessage = {
-              type: "text",
-              text: event.delta.text,
-            };
-            sendToRenderer("agent:message", threadId, streamMsg);
-          }
+          processAssistantEvent(threadId, message, streamState);
           break;
         }
 
         case "result": {
-          const resultCost = message.total_cost_usd ?? 0;
-          const resultContent: MessageContent[] = [
-            {
-              type: "text",
-              text: "result" in message ? String(message.result) : "",
-            },
-          ];
-
-          storage.addMessage(
-            crypto.randomUUID(),
-            threadId,
-            "assistant",
-            resultContent,
-            resultCost,
-            message.usage?.input_tokens ?? null,
-            message.usage?.output_tokens ?? null
-          );
-
-          // Track budget
-          trackCost(
-            threadId,
-            config.projectId,
-            resultCost,
-            message.usage?.input_tokens ?? 0,
-            message.usage?.output_tokens ?? 0
-          );
-
-          const costMsg: StreamMessage = {
-            type: "cost",
-            costUsd: resultCost,
-            tokensIn: message.usage?.input_tokens,
-            tokensOut: message.usage?.output_tokens,
-          };
-          sendToRenderer("agent:message", threadId, costMsg);
-
-          const isSuccess = message.subtype === "success";
-          const finalStatus = isSuccess ? "completed" : "failed";
-          storage.updateThreadStatus(threadId, finalStatus);
-
-          const statusMsg: StreamMessage = {
-            type: "status",
-            status: finalStatus,
-          };
-          sendToRenderer("agent:status", threadId, finalStatus);
-          sendToRenderer("agent:message", threadId, statusMsg);
-
-          emitEvent({
-            type: isSuccess ? "completed" : "failed",
-            threadId,
-            costUsd: resultCost,
-          });
-
-          logger.info(
-            "agent-orchestrator",
-            `Agent ${threadId} finished: ${message.subtype} ($${resultCost.toFixed(4)})`
-          );
+          receivedResult = true;
+          processResultEvent(threadId, config.projectId, message);
           break;
         }
       }
+    }
+
+    if (!receivedResult) {
+      logger.warn(
+        "agent-orchestrator",
+        `Agent ${threadId} ended without a result event`
+      );
+      storage.updateThreadStatus(threadId, "failed");
+      sendToRenderer("agent:status", threadId, "failed");
+      sendToRenderer("agent:error", threadId, {
+        message: "Agent process ended without producing a result",
+      });
+      emitEvent({
+        type: "failed",
+        threadId,
+        errorMessage: "Agent process ended without producing a result",
+      });
     }
   } catch (err) {
     const errorMessage =
@@ -383,10 +507,9 @@ async function runAgent(
     storage.updateThreadStatus(threadId, "failed");
     sendToRenderer("agent:error", threadId, { message: errorMessage });
     sendToRenderer("agent:status", threadId, "failed");
-    emitEvent({ type: "failed", threadId });
+    emitEvent({ type: "failed", threadId, errorMessage });
   } finally {
     activeAgents.delete(threadId);
-    // Process queued agents now that a slot is free
     processQueue().catch((err) => {
       logger.error("agent-orchestrator", "Queue processing error", err);
     });
@@ -442,18 +565,29 @@ export const agentOrchestrator = {
 
     const agent = activeAgents.get(threadId);
     if (agent) {
-      agent.abortController.abort();
-      storage.updateThreadStatus(threadId, "failed");
-      sendToRenderer("agent:status", threadId, "failed");
-      emitEvent({ type: "cancelled", threadId });
-      logger.info("agent-orchestrator", `Agent ${threadId} cancelled`);
+      agent.kill();
     }
+
+    // Always update status, even if the agent is no longer tracked
+    // (e.g. stale "running" threads from a previous app session)
+    storage.updateThreadStatus(threadId, "failed");
+    sendToRenderer("agent:status", threadId, "failed");
+    emitEvent({ type: "cancelled", threadId });
+    logger.info("agent-orchestrator", `Agent ${threadId} cancelled`);
   },
 
   async sendMessage(threadId: string, message: string): Promise<void> {
-    const sessionId = sessionRegistry.getSessionId(threadId);
+    // Try in-memory registry first, then fall back to DB-persisted session ID
+    let sessionId = sessionRegistry.getSessionId(threadId);
     if (!sessionId) {
-      throw new Error(`No session found for thread ${threadId}`);
+      const thread = storage.getThread(threadId);
+      sessionId = thread?.sessionId ?? null;
+      if (sessionId) {
+        sessionRegistry.register(threadId, sessionId);
+      }
+    }
+    if (!sessionId) {
+      throw new Error(`No session found for thread ${threadId}. The session may have been lost.`);
     }
 
     storage.addMessage(
@@ -472,109 +606,59 @@ export const agentOrchestrator = {
       : null;
     const cwd = thread?.worktreePath ?? projectData?.path ?? process.cwd();
 
-    const abortController = new AbortController();
+    const appSettings = storage.getAppSettings();
+    const { permissionMode: resolvedMode } =
+      resolvePermissionConfig(appSettings);
+
+    const { events, kill } = spawnClaude({
+      prompt: message,
+      cwd,
+      resumeSessionId: sessionId,
+      permissionMode: resolvedMode,
+      claudePath: getClaudeCliPath(),
+    });
+
+    const projectId = thread?.projectId ?? "";
     activeAgents.set(threadId, {
       threadId,
-      projectId: thread?.projectId ?? "",
-      abortController,
+      projectId,
+      kill,
       costUsd: 0,
       tokensIn: 0,
       tokensOut: 0,
+      modelUsage: {},
     });
     storage.updateThreadStatus(threadId, "running");
     sendToRenderer("agent:status", threadId, "running");
 
+    let receivedResult = false;
+    const streamState = { lastSeenTextLength: 0, currentBlockIndex: 0, seenToolUseIds: new Set<string>() };
+
     try {
-      const agentQuery = query({
-        prompt: message,
-        options: {
-          resume: sessionId,
-          cwd,
-          permissionMode: "acceptEdits",
-          includePartialMessages: true,
-        },
-      });
-
-      for await (const msg of agentQuery) {
-        if (abortController.signal.aborted) {
-          await agentQuery.interrupt();
-          break;
-        }
-
-        if (msg.type === "assistant") {
-          const contentBlocks: MessageContent[] = [];
-          if (msg.message && Array.isArray(msg.message.content)) {
-            for (const block of msg.message.content) {
-              if (block.type === "text") {
-                contentBlocks.push({ type: "text", text: block.text });
-              } else if (block.type === "tool_use") {
-                contentBlocks.push({
-                  type: "tool_use",
-                  toolName: block.name,
-                  toolInput: block.input as Record<string, unknown>,
-                });
-              }
-            }
+      for await (const msg of events) {
+        if (msg.type === "system") {
+          if (msg.subtype === "init" && msg.session_id) {
+            sessionRegistry.register(threadId, msg.session_id);
+            storage.updateThreadSession(threadId, msg.session_id);
           }
-          if (contentBlocks.length > 0) {
-            storage.addMessage(
-              crypto.randomUUID(),
-              threadId,
-              "assistant",
-              contentBlocks,
-              null,
-              null,
-              null
-            );
-            for (const block of contentBlocks) {
-              sendToRenderer("agent:message", threadId, {
-                type: block.type === "text" ? "text" : "tool_use",
-                text: block.text,
-                toolName: block.toolName,
-                toolInput: block.toolInput,
-              } as StreamMessage);
-            }
-          }
-        } else if (msg.type === "stream_event") {
-          const event = msg.event;
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            sendToRenderer("agent:message", threadId, {
-              type: "text",
-              text: event.delta.text,
-            } as StreamMessage);
-          }
+        } else if (msg.type === "assistant") {
+          processAssistantEvent(threadId, msg, streamState);
         } else if (msg.type === "result") {
-          const cost = msg.total_cost_usd ?? 0;
-          storage.addMessage(
-            crypto.randomUUID(),
-            threadId,
-            "assistant",
-            [
-              {
-                type: "text",
-                text: "result" in msg ? String(msg.result) : "",
-              },
-            ],
-            cost,
-            msg.usage?.input_tokens ?? null,
-            msg.usage?.output_tokens ?? null
-          );
-
-          trackCost(
-            threadId,
-            thread?.projectId ?? "",
-            cost,
-            msg.usage?.input_tokens ?? 0,
-            msg.usage?.output_tokens ?? 0
-          );
-
-          const status = msg.subtype === "success" ? "completed" : "failed";
-          storage.updateThreadStatus(threadId, status);
-          sendToRenderer("agent:status", threadId, status);
+          receivedResult = true;
+          processResultEvent(threadId, projectId, msg);
         }
+      }
+
+      if (!receivedResult) {
+        logger.warn(
+          "agent-orchestrator",
+          `sendMessage for ${threadId} ended without a result event`
+        );
+        storage.updateThreadStatus(threadId, "failed");
+        sendToRenderer("agent:status", threadId, "failed");
+        sendToRenderer("agent:error", threadId, {
+          message: "Agent process ended without producing a result",
+        });
       }
     } catch (err) {
       const errorMessage =
@@ -585,12 +669,29 @@ export const agentOrchestrator = {
       );
       storage.updateThreadStatus(threadId, "failed");
       sendToRenderer("agent:error", threadId, { message: errorMessage });
+      sendToRenderer("agent:status", threadId, "failed");
     } finally {
       activeAgents.delete(threadId);
       processQueue().catch((err) => {
         logger.error("agent-orchestrator", "Queue processing error", err);
       });
     }
+  },
+
+  shutdownAll(): void {
+    for (const agent of activeAgents.values()) {
+      try {
+        agent.kill();
+      } catch (err) {
+        logger.warn(
+          "agent-orchestrator",
+          `Failed to kill agent ${agent.threadId}`,
+          err
+        );
+      }
+    }
+    activeAgents.clear();
+    logger.info("agent-orchestrator", "All agents shut down");
   },
 
   setMaxConcurrent(n: number): void {
@@ -648,13 +749,23 @@ export const agentOrchestrator = {
     return total;
   },
 
-  getAgentCost(threadId: string): { costUsd: number; tokensIn: number; tokensOut: number } | null {
+  getAgentCost(threadId: string): { costUsd: number; tokensIn: number; tokensOut: number; modelUsage: Record<string, ModelTokenUsage> } | null {
     const agent = activeAgents.get(threadId);
     if (!agent) return null;
     return {
       costUsd: agent.costUsd,
       tokensIn: agent.tokensIn,
       tokensOut: agent.tokensOut,
+      modelUsage: { ...agent.modelUsage },
     };
+  },
+
+  getGlobalModelUsage(): Record<string, ModelTokenUsage> {
+    // Deep copy to avoid mutation
+    const copy: Record<string, ModelTokenUsage> = {};
+    for (const [model, usage] of Object.entries(globalModelUsage)) {
+      copy[model] = { ...usage };
+    }
+    return copy;
   },
 };

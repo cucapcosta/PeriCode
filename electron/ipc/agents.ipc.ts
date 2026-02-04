@@ -1,7 +1,8 @@
 import { ipcMain } from "electron";
 import { agentOrchestrator } from "../services/agent-orchestrator";
 import { storage } from "../services/storage";
-import type { AgentLaunchConfig, ThreadInfo, ThreadDetail, Message } from "../../src/types/ipc";
+import { sessionRegistry } from "../services/session-registry";
+import type { AgentLaunchConfig, ThreadInfo, ThreadDetail, Message, ThreadCostSummary } from "../../src/types/ipc";
 
 export function registerAgentHandlers(): void {
   ipcMain.handle(
@@ -53,15 +54,49 @@ export function registerAgentHandlers(): void {
     return storage.listMessages(threadId);
   });
 
-  ipcMain.handle("thread:delete", (_event, threadId: string): void => {
+  ipcMain.handle("thread:delete", async (_event, threadId: string): Promise<void> => {
     if (agentOrchestrator.isRunning(threadId)) {
-      agentOrchestrator.cancel(threadId);
+      await agentOrchestrator.cancel(threadId);
     }
+    sessionRegistry.remove(threadId);
     storage.deleteThread(threadId);
   });
 
   ipcMain.handle("thread:fork", (_event, _threadId: string): ThreadInfo => {
     // Fork will be fully implemented in Phase 2 with worktrees
     throw new Error("Thread forking not yet implemented");
+  });
+
+  ipcMain.handle("thread:getCostSummary", (_event, threadId: string): ThreadCostSummary => {
+    // First try live data from the running agent
+    const agentCost = agentOrchestrator.getAgentCost(threadId);
+    if (agentCost) {
+      return {
+        threadId,
+        totalCostUsd: agentCost.costUsd,
+        totalTokensIn: agentCost.tokensIn,
+        totalTokensOut: agentCost.tokensOut,
+        modelUsage: agentCost.modelUsage,
+      };
+    }
+
+    // Fall back to aggregating from stored messages
+    const messages = storage.listMessages(threadId);
+    let totalCostUsd = 0;
+    let totalTokensIn = 0;
+    let totalTokensOut = 0;
+    for (const msg of messages) {
+      if (msg.costUsd != null) totalCostUsd += msg.costUsd;
+      if (msg.tokensIn != null) totalTokensIn += msg.tokensIn;
+      if (msg.tokensOut != null) totalTokensOut += msg.tokensOut;
+    }
+
+    return {
+      threadId,
+      totalCostUsd,
+      totalTokensIn,
+      totalTokensOut,
+      modelUsage: {},
+    };
   });
 }

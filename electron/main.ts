@@ -60,6 +60,10 @@ app.whenReady().then(async () => {
     logger.error("main", "Failed to initialize database", err);
   }
 
+  // Mark any threads left as "running" from a previous session as "failed"
+  // since no agents are actually running after an app restart
+  storage.markStaleRunningThreads();
+
   registerAllIPCHandlers();
   createWindow();
 
@@ -81,7 +85,10 @@ app.whenReady().then(async () => {
   agentOrchestrator.onEvent("failed", (event) => {
     const thread = storage.getThread(event.threadId);
     const title = thread?.title?.slice(0, 60) ?? "Agent";
-    notificationService.notify("error", "Agent Failed", `${title} encountered an error`);
+    const detail = event.errorMessage
+      ? `${title}: ${event.errorMessage.slice(0, 200)}`
+      : `${title} encountered an error`;
+    notificationService.notify("error", "Agent Failed", detail);
   });
 
   app.on("activate", () => {
@@ -98,6 +105,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  agentOrchestrator.shutdownAll();
   terminalService.shutdown();
   storage.close();
 });

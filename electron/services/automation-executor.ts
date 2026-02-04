@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import { spawnClaude } from "./claude-cli";
 import { automationScheduler } from "./automation-scheduler";
 import { storage } from "./storage";
 import { skillsEngine } from "./skills-engine";
@@ -7,7 +8,6 @@ import { logger } from "../utils/logger";
 import type {
   Automation,
   AutomationRun,
-  AutomationConfig,
   AppNotification,
 } from "../../src/types/ipc";
 
@@ -18,6 +18,7 @@ interface ExecutionContext {
   automation: Automation;
   worktreePath: string | null;
   sandboxPolicy: SandboxPolicy;
+  kill: (() => void) | null;
 }
 
 /**
@@ -87,6 +88,7 @@ class AutomationExecutor {
         automation,
         worktreePath,
         sandboxPolicy,
+        kill: null,
       };
       this.activeRuns.set(run.id, ctx);
 
@@ -118,25 +120,32 @@ class AutomationExecutor {
         ? `${systemPrompt}\n---\n\n${automation.prompt}`
         : automation.prompt;
 
-      // 4. Launch agent via the orchestrator (simplified - direct query)
-      const { query } = await import("@anthropic-ai/claude-agent-sdk");
+      // 4. Launch agent via CLI spawn
       const cwd = worktreePath ?? project?.path ?? process.cwd();
+
+      let claudeCliPath: string | undefined;
+      try {
+        const settings = storage.getAppSettings();
+        claudeCliPath = settings.claudeCliPath ?? undefined;
+      } catch {
+        // ignore
+      }
+
+      const { events, kill } = spawnClaude({
+        prompt: fullPrompt,
+        cwd,
+        permissionMode:
+          sandboxPolicy === "read-only" ? "plan" : "acceptEdits",
+        allowedTools,
+        claudePath: claudeCliPath,
+      });
+
+      ctx.kill = kill;
 
       const conversation: Array<{ role: string; content: string }> = [];
       let totalCostUsd = 0;
 
-      const agentQuery = query({
-        prompt: fullPrompt,
-        options: {
-          cwd,
-          permissionMode:
-            sandboxPolicy === "read-only" ? "plan" : "acceptEdits",
-          allowedTools,
-          includePartialMessages: true,
-        },
-      });
-
-      for await (const message of agentQuery) {
+      for await (const message of events) {
         switch (message.type) {
           case "assistant": {
             const content = message.message?.content;
@@ -154,13 +163,10 @@ class AutomationExecutor {
             break;
           }
           case "result": {
-            if (message.subtype === "success") {
-              const successMsg = message as { result: string; total_cost_usd: number; subtype: "success"; type: "result" };
-              if (successMsg.result) {
-                conversation.push({ role: "assistant", content: successMsg.result });
-              }
-              totalCostUsd = successMsg.total_cost_usd ?? 0;
+            if (message.result) {
+              conversation.push({ role: "assistant", content: message.result });
             }
+            totalCostUsd = message.total_cost_usd ?? 0;
             break;
           }
         }
