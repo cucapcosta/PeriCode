@@ -26,6 +26,7 @@ const VALID_INVOKE_CHANNELS = new Set([
   "worktree:acceptFile",
   "worktree:reject",
   "worktree:openInEditor",
+  "worktree:openInVSCode",
   "skill:list",
   "skill:get",
   "skill:create",
@@ -62,6 +63,9 @@ const VALID_INVOKE_CHANNELS = new Set([
   "notes:get",
   "notes:save",
   "notes:delete",
+  "image:pick",
+  "image:readBase64",
+  "image:validatePath",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([

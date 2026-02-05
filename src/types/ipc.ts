@@ -43,6 +43,7 @@ export interface Message {
   tokensIn: number | null;
   tokensOut: number | null;
   createdAt: string;
+  imagePaths?: string[];
 }
 
 export interface MessageContent {
@@ -60,6 +61,7 @@ export interface AgentLaunchConfig {
   skillIds?: string[];
   useWorktree?: boolean;
   allowedTools?: string[];
+  imagePaths?: string[];
 }
 
 export type AgentStatus = "running" | "paused" | "completed" | "failed";
@@ -255,6 +257,14 @@ export interface ProjectDetectionInfo {
   defaultBranch: string | null;
 }
 
+export interface ImageAttachment {
+  filePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  base64Thumbnail: string;
+}
+
 export interface AppNotification {
   id: string;
   type: "info" | "success" | "warning" | "error";
@@ -299,7 +309,7 @@ export interface IPCInvokeChannels {
   "agent:resume": { args: [threadId: string]; return: void };
   "agent:cancel": { args: [threadId: string]; return: void };
   "agent:sendMessage": {
-    args: [threadId: string, message: string];
+    args: [threadId: string, message: string, imagePaths?: string[]];
     return: void;
   };
   "agent:getRunning": { args: []; return: ThreadInfo[] };
@@ -327,6 +337,10 @@ export interface IPCInvokeChannels {
   "worktree:reject": { args: [threadId: string]; return: void };
   "worktree:openInEditor": {
     args: [threadId: string, filePath: string];
+    return: void;
+  };
+  "worktree:openInVSCode": {
+    args: [filePath: string, line?: number];
     return: void;
   };
 
@@ -397,6 +411,11 @@ export interface IPCInvokeChannels {
   "export:diffPatch": { args: [threadId: string]; return: string | null };
   "export:automationCsv": { args: [projectId: string]; return: string | null };
   "export:costReport": { args: [projectId: string]; return: string | null };
+
+  // Images
+  "image:pick": { args: []; return: ImageAttachment[] | null };
+  "image:readBase64": { args: [filePath: string]; return: string | null };
+  "image:validatePath": { args: [filePath: string]; return: boolean };
 }
 
 // IPC event channel map (main -> renderer streaming)

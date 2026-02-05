@@ -26,8 +26,8 @@ export function registerAgentHandlers(): void {
 
   ipcMain.handle(
     "agent:sendMessage",
-    async (_event, threadId: string, message: string): Promise<void> => {
-      await agentOrchestrator.sendMessage(threadId, message);
+    async (_event, threadId: string, message: string, imagePaths?: string[]): Promise<void> => {
+      await agentOrchestrator.sendMessage(threadId, message, imagePaths);
     }
   );
 

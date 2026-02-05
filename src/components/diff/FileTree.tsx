@@ -5,6 +5,7 @@ interface FileTreeProps {
   files: FileDiff[];
   selectedFile: string | null;
   onSelectFile: (path: string) => void;
+  onOpenInVSCode?: (path: string) => void;
 }
 
 const statusIcon: Record<string, { symbol: string; className: string }> = {
@@ -18,6 +19,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   files,
   selectedFile,
   onSelectFile,
+  onOpenInVSCode,
 }) => {
   const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
   const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
@@ -36,29 +38,46 @@ export const FileTree: React.FC<FileTreeProps> = ({
       <div className="flex-1 overflow-y-auto">
         {files.map((file) => {
           const icon = statusIcon[file.status] ?? statusIcon.modified;
+          const isSelected = selectedFile === file.path;
           return (
-            <button
+            <div
               key={file.path}
-              onClick={() => onSelectFile(file.path)}
-              className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-accent/50 transition-colors ${
-                selectedFile === file.path ? "bg-accent" : ""
+              className={`group flex items-center hover:bg-accent/50 transition-colors ${
+                isSelected ? "bg-accent" : ""
               }`}
             >
-              <span className={`font-mono text-xs font-bold ${icon.className}`}>
-                {icon.symbol}
-              </span>
-              <span className="truncate flex-1 text-foreground">
-                {file.path.split("/").pop()}
-              </span>
-              <span className="text-xs text-muted-foreground flex-shrink-0">
-                {file.additions > 0 && (
-                  <span className="text-green-400">+{file.additions}</span>
-                )}
-                {file.deletions > 0 && (
-                  <span className="text-red-400 ml-1">-{file.deletions}</span>
-                )}
-              </span>
-            </button>
+              <button
+                onClick={() => onSelectFile(file.path)}
+                className="flex-1 text-left px-3 py-2 text-sm flex items-center gap-2 min-w-0"
+              >
+                <span className={`font-mono text-xs font-bold flex-shrink-0 ${icon.className}`}>
+                  {icon.symbol}
+                </span>
+                <span className="truncate flex-1 text-foreground" title={file.path}>
+                  {file.path.split("/").pop()}
+                </span>
+                <span className="text-xs text-muted-foreground flex-shrink-0">
+                  {file.additions > 0 && (
+                    <span className="text-green-400">+{file.additions}</span>
+                  )}
+                  {file.deletions > 0 && (
+                    <span className="text-red-400 ml-1">-{file.deletions}</span>
+                  )}
+                </span>
+              </button>
+              {onOpenInVSCode && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInVSCode(file.path);
+                  }}
+                  className="flex-shrink-0 px-1.5 py-1 mr-1 rounded text-[10px] text-muted-foreground/50 hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-all"
+                  title={`Open ${file.path} in VS Code`}
+                >
+                  VS
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

@@ -371,9 +371,9 @@ export const App: React.FC = () => {
       />
 
       {showShortcutsHelp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in">
           <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={() => setShowShortcutsHelp(false)} />
-          <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+          <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 animate-scale-in">
             <h2 className="text-lg font-semibold text-foreground mb-4">Keyboard Shortcuts</h2>
             <div className="space-y-2 text-sm">
               {[

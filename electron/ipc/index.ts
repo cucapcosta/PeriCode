@@ -8,6 +8,7 @@ import { registerStatusHandlers } from "./status.ipc";
 import { registerTerminalHandlers } from "./terminal.ipc";
 import { registerExportHandlers } from "./export.ipc";
 import { registerNotesHandlers } from "./notes.ipc";
+import { registerImageHandlers } from "./images.ipc";
 
 export function registerAllIPCHandlers(): void {
   registerProjectHandlers();
@@ -20,4 +21,5 @@ export function registerAllIPCHandlers(): void {
   registerTerminalHandlers();
   registerExportHandlers();
   registerNotesHandlers();
+  registerImageHandlers();
 }

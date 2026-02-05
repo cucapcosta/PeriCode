@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ipc } from "@/lib/ipc-client";
 import type { StatusInfo, ThreadCostSummary } from "@/types/ipc";
+import { estimateCost, getModelPricing } from "@/lib/model-pricing";
 
 interface StatusBarProps {
   activeThreadId?: string | null;
@@ -198,50 +199,94 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
                 .map(([model, usage]) => {
                   const totalIn = usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
                   const totalOut = usage.outputTokens;
+                  const pricing = getModelPricing(model);
+                  const calcCost = estimateCost(
+                    model,
+                    usage.inputTokens,
+                    usage.outputTokens,
+                    usage.cacheCreationInputTokens,
+                    usage.cacheReadInputTokens
+                  );
                   return (
                     <div key={model} className="px-3 py-2">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-foreground">
                           {shortModelName(model)}
                         </span>
-                        <span className="text-xs font-mono text-foreground">
-                          {formatCost(usage.costUsd)}
-                        </span>
+                        <div className="flex items-center gap-2 text-xs font-mono">
+                          <span className="text-foreground" title="CLI reported cost">
+                            {formatCost(usage.costUsd)}
+                          </span>
+                          <span className="text-muted-foreground/50">|</span>
+                          <span className="text-blue-400" title="Calculated from token pricing">
+                            {formatCost(calcCost)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
+                      <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-[10px]">
                         <span className="text-muted-foreground">Input</span>
                         <span className="text-right font-mono">{formatTokens(usage.inputTokens)}</span>
+                        <span className="text-right font-mono text-muted-foreground/60">${pricing.inputPerMTok}/M</span>
                         <span className="text-muted-foreground">Output</span>
                         <span className="text-right font-mono">{formatTokens(usage.outputTokens)}</span>
+                        <span className="text-right font-mono text-muted-foreground/60">${pricing.outputPerMTok}/M</span>
                         {usage.cacheReadInputTokens > 0 && (
                           <>
                             <span className="text-muted-foreground">Cache read</span>
                             <span className="text-right font-mono">{formatTokens(usage.cacheReadInputTokens)}</span>
+                            <span className="text-right font-mono text-muted-foreground/60">${pricing.cacheReadPerMTok}/M</span>
                           </>
                         )}
                         {usage.cacheCreationInputTokens > 0 && (
                           <>
                             <span className="text-muted-foreground">Cache write</span>
                             <span className="text-right font-mono">{formatTokens(usage.cacheCreationInputTokens)}</span>
+                            <span className="text-right font-mono text-muted-foreground/60">${pricing.cacheWritePerMTok}/M</span>
                           </>
                         )}
                         <span className="text-muted-foreground font-medium">Total</span>
                         <span className="text-right font-mono font-medium">
                           {formatTokens(totalIn + totalOut)}
                         </span>
+                        <span />
                       </div>
                     </div>
                   );
                 })}
             </div>
             {/* Summary footer */}
-            <div className="px-3 py-2 border-t border-border bg-muted/30 flex items-center justify-between">
-              <span className="text-[10px] text-muted-foreground">
-                {modelEntries.length} model{modelEntries.length !== 1 ? "s" : ""}
-              </span>
-              <span className="text-xs font-mono font-semibold text-foreground">
-                {formatCost(displayCost)}
-              </span>
+            <div className="px-3 py-2 border-t border-border bg-muted/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground">
+                  {modelEntries.length} model{modelEntries.length !== 1 ? "s" : ""}
+                </span>
+                <div className="flex items-center gap-2 text-xs font-mono font-semibold">
+                  <span className="text-foreground" title="CLI reported">
+                    {formatCost(displayCost)}
+                  </span>
+                  <span className="text-muted-foreground/50">|</span>
+                  <span className="text-blue-400" title="Calculated">
+                    {formatCost(
+                      modelEntries.reduce(
+                        (sum, [model, usage]) =>
+                          sum +
+                          estimateCost(
+                            model,
+                            usage.inputTokens,
+                            usage.outputTokens,
+                            usage.cacheCreationInputTokens,
+                            usage.cacheReadInputTokens
+                          ),
+                        0
+                      )
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-0.5 text-[9px] text-muted-foreground/60">
+                <span>CLI</span>
+                <span className="text-blue-400/60">Calc</span>
+              </div>
             </div>
           </div>
         )}

@@ -29,7 +29,7 @@ interface AgentState {
   launchAgent: (config: AgentLaunchConfig) => Promise<ThreadInfo>;
   cancelAgent: (threadId: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
-  sendMessage: (threadId: string, message: string) => Promise<void>;
+  sendMessage: (threadId: string, message: string, imagePaths?: string[]) => Promise<void>;
   setActiveThread: (threadId: string | null) => void;
   loadMessages: (threadId: string) => Promise<void>;
 
@@ -109,7 +109,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     });
   },
 
-  sendMessage: async (threadId: string, message: string) => {
+  sendMessage: async (threadId: string, message: string, imagePaths?: string[]) => {
     const userMsg: Message = {
       id: crypto.randomUUID(),
       threadId,
@@ -119,13 +119,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       tokensIn: null,
       tokensOut: null,
       createdAt: new Date().toISOString(),
+      imagePaths: imagePaths,
     };
     const msgs = new Map(get().messages);
     const existing = msgs.get(threadId) || [];
     msgs.set(threadId, [...existing, userMsg]);
     set({ messages: msgs });
 
-    await ipc.invoke("agent:sendMessage", threadId, message);
+    await ipc.invoke("agent:sendMessage", threadId, message, imagePaths);
   },
 
   setActiveThread: (threadId: string | null) => {
@@ -301,16 +302,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       ),
     }));
 
-    // No longer reload from DB on completion — streaming blocks are promoted
-    // to messages inline via handleStreamMessage's "status" handler.
-    // Only clean up if status is terminal and streaming wasn't flushed yet.
-    if (status === "completed" || status === "failed") {
-      const streaming = new Map(get().streamingContent);
-      if (streaming.has(threadId)) {
-        streaming.delete(threadId);
-        set({ streamingContent: streaming });
-      }
-    }
+    // Do NOT delete streamingContent here. The backend sends agent:status
+    // before agent:message(type:"status"). Deleting streaming blocks here
+    // would race against handleStreamMessage which needs them to promote
+    // blocks into finalized messages. Cleanup happens in handleStreamMessage.
   },
 
   handleError: (threadId: string, errorMessage: string) => {

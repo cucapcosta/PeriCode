@@ -85,8 +85,32 @@ export function registerWorktreeHandlers(): void {
       if (!thread || !thread.worktreePath) {
         throw new Error("Thread has no worktree");
       }
-      const fullPath = require("path").join(thread.worktreePath, filePath);
-      await shell.openPath(fullPath);
+      const path = require("path");
+      const { execFile } = require("child_process");
+      const fullPath = path.join(thread.worktreePath, filePath);
+      // Try opening in VS Code first, fall back to shell.openPath
+      execFile("code", ["--goto", fullPath], (err: Error | null) => {
+        if (err) {
+          shell.openPath(fullPath);
+        }
+      });
+    }
+  );
+
+  ipcMain.handle(
+    "worktree:openInVSCode",
+    async (
+      _event,
+      filePath: string,
+      line?: number
+    ): Promise<void> => {
+      const { execFile } = require("child_process");
+      const target = line ? `${filePath}:${line}` : filePath;
+      execFile("code", ["--goto", target], (err: Error | null) => {
+        if (err) {
+          shell.openPath(filePath);
+        }
+      });
     }
   );
 }

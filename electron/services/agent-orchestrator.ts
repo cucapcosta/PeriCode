@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { sessionRegistry } from "./session-registry";
 import { worktreeManager } from "./worktree-manager";
 import { logger } from "../utils/logger";
+import { estimateCost } from "../utils/model-pricing";
 import type {
   AgentLaunchConfig,
   AppSettings,
@@ -65,6 +66,12 @@ const projectCosts: Map<string, number> = new Map();
 
 // Global per-model token usage accumulator
 const globalModelUsage: Record<string, ModelTokenUsage> = {};
+
+// Previous cumulative cost per thread — used to compute deltas because
+// Claude CLI's total_cost_usd and modelUsage are session-cumulative when
+// using --resume, not per-interaction deltas.
+const previousCumulativeCost: Map<string, number> = new Map();
+const previousCumulativeModelUsage: Map<string, Record<string, ModelTokenUsage>> = new Map();
 
 // ── Helpers ────────────────────────────────────────────────
 
@@ -207,6 +214,17 @@ function resolvePermissionConfig(
   }
 }
 
+/** Build prompt that includes image file path references for Claude CLI */
+function buildPromptWithImages(prompt: string, imagePaths?: string[]): string {
+  if (!imagePaths || imagePaths.length === 0) return prompt;
+  // Prepend image paths so Claude CLI reads them as file references
+  const imageRefs = imagePaths
+    .map((p) => p.replace(/\\/g, "/"))
+    .map((p) => `[Image: ${p}]`)
+    .join("\n");
+  return `${imageRefs}\n\n${prompt}`;
+}
+
 async function launchImmediate(
   config: AgentLaunchConfig,
   threadId: string
@@ -272,8 +290,10 @@ async function launchImmediate(
   const { permissionMode: resolvedMode, allowedTools: resolvedTools } =
     resolvePermissionConfig(appSettings, config.allowedTools);
 
+  const fullPrompt = buildPromptWithImages(config.prompt, config.imagePaths);
+
   const { events, kill } = spawnClaude({
-    prompt: config.prompt,
+    prompt: fullPrompt,
     cwd,
     model: config.model,
     permissionMode: resolvedMode,
@@ -367,45 +387,106 @@ function processAssistantEvent(
   }
 }
 
+/** Compute per-model delta by subtracting previous cumulative snapshot. */
+function computeModelUsageDelta(
+  threadId: string,
+  cumulativeUsage: Record<string, ModelTokenUsage>
+): Record<string, ModelTokenUsage> {
+  const prev = previousCumulativeModelUsage.get(threadId) ?? {};
+  const delta: Record<string, ModelTokenUsage> = {};
+
+  for (const [model, usage] of Object.entries(cumulativeUsage)) {
+    const p = prev[model];
+    if (p) {
+      delta[model] = {
+        inputTokens: Math.max(0, usage.inputTokens - p.inputTokens),
+        outputTokens: Math.max(0, usage.outputTokens - p.outputTokens),
+        cacheReadInputTokens: Math.max(0, usage.cacheReadInputTokens - p.cacheReadInputTokens),
+        cacheCreationInputTokens: Math.max(0, usage.cacheCreationInputTokens - p.cacheCreationInputTokens),
+        costUsd: Math.max(0, usage.costUsd - p.costUsd),
+      };
+    } else {
+      delta[model] = { ...usage };
+    }
+  }
+
+  // Save current cumulative as the new baseline (deep copy)
+  const snapshot: Record<string, ModelTokenUsage> = {};
+  for (const [model, usage] of Object.entries(cumulativeUsage)) {
+    snapshot[model] = { ...usage };
+  }
+  previousCumulativeModelUsage.set(threadId, snapshot);
+
+  return delta;
+}
+
 function processResultEvent(
   threadId: string,
   projectId: string,
   message: import("./claude-cli").CliEvent
 ): void {
-  const resultCost = message.total_cost_usd ?? 0;
+  // Claude CLI total_cost_usd and modelUsage are session-cumulative when
+  // using --resume.  Compute the delta since the last result for this thread.
+  const cumulativeCost = message.total_cost_usd ?? 0;
+  const prevCost = previousCumulativeCost.get(threadId) ?? 0;
+  let deltaCost = Math.max(0, cumulativeCost - prevCost);
+  previousCumulativeCost.set(threadId, cumulativeCost);
+
   const resultContent: MessageContent[] = [
     { type: "text", text: message.result ?? "" },
   ];
 
-  const parsedModelUsage: Record<string, ModelTokenUsage> | undefined =
+  // Parse cumulative model usage from CLI
+  const cumulativeModelUsage: Record<string, ModelTokenUsage> | undefined =
     message.modelUsage
       ? Object.fromEntries(
-          Object.entries(message.modelUsage).map(([model, u]) => [
-            model,
-            {
-              inputTokens: u.inputTokens ?? 0,
-              outputTokens: u.outputTokens ?? 0,
-              cacheReadInputTokens: u.cacheReadInputTokens ?? 0,
-              cacheCreationInputTokens: u.cacheCreationInputTokens ?? 0,
-              costUsd: u.costUSD ?? 0,
-            },
-          ])
+          Object.entries(message.modelUsage).map(([model, u]) => {
+            const input = u.inputTokens ?? 0;
+            const output = u.outputTokens ?? 0;
+            const cacheRead = u.cacheReadInputTokens ?? 0;
+            const cacheCreate = u.cacheCreationInputTokens ?? 0;
+            const cliCost = u.costUSD ?? 0;
+            const cost = cliCost > 0
+              ? cliCost
+              : estimateCost(model, input, output, cacheCreate, cacheRead);
+            return [
+              model,
+              {
+                inputTokens: input,
+                outputTokens: output,
+                cacheReadInputTokens: cacheRead,
+                cacheCreationInputTokens: cacheCreate,
+                costUsd: cost,
+              },
+            ];
+          })
         )
       : undefined;
 
-  // Derive total tokens from per-model breakdown when available.
-  // result.usage only reflects the last API turn, not the session total.
-  let totalTokensIn = message.usage?.input_tokens ?? 0;
-  let totalTokensOut = message.usage?.output_tokens ?? 0;
-  if (parsedModelUsage) {
+  // Compute per-model delta
+  const deltaModelUsage = cumulativeModelUsage
+    ? computeModelUsageDelta(threadId, cumulativeModelUsage)
+    : undefined;
+
+  // Derive total token deltas from per-model delta breakdown
+  let deltaTokensIn = message.usage?.input_tokens ?? 0;
+  let deltaTokensOut = message.usage?.output_tokens ?? 0;
+  if (deltaModelUsage) {
     let sumIn = 0;
     let sumOut = 0;
-    for (const u of Object.values(parsedModelUsage)) {
+    for (const u of Object.values(deltaModelUsage)) {
       sumIn += u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens;
       sumOut += u.outputTokens;
     }
-    if (sumIn > 0) totalTokensIn = sumIn;
-    if (sumOut > 0) totalTokensOut = sumOut;
+    if (sumIn > 0) deltaTokensIn = sumIn;
+    if (sumOut > 0) deltaTokensOut = sumOut;
+  }
+
+  // If CLI didn't provide total_cost_usd, sum estimated per-model costs
+  if (deltaCost === 0 && deltaModelUsage) {
+    for (const u of Object.values(deltaModelUsage)) {
+      deltaCost += u.costUsd;
+    }
   }
 
   storage.addMessage(
@@ -413,30 +494,30 @@ function processResultEvent(
     threadId,
     "assistant",
     resultContent,
-    resultCost,
-    totalTokensIn,
-    totalTokensOut
+    deltaCost,
+    deltaTokensIn,
+    deltaTokensOut
   );
 
-  if (parsedModelUsage) {
-    storage.addModelUsage(threadId, parsedModelUsage);
+  if (deltaModelUsage) {
+    storage.addModelUsage(threadId, deltaModelUsage);
   }
 
   trackCost(
     threadId,
     projectId,
-    resultCost,
-    totalTokensIn,
-    totalTokensOut,
-    parsedModelUsage
+    deltaCost,
+    deltaTokensIn,
+    deltaTokensOut,
+    deltaModelUsage
   );
 
   sendToRenderer("agent:message", threadId, {
     type: "cost",
-    costUsd: resultCost,
-    tokensIn: totalTokensIn,
-    tokensOut: totalTokensOut,
-    modelUsage: parsedModelUsage,
+    costUsd: deltaCost,
+    tokensIn: deltaTokensIn,
+    tokensOut: deltaTokensOut,
+    modelUsage: deltaModelUsage,
   } as StreamMessage);
 
   const isSuccess = message.subtype === "success";
@@ -452,12 +533,12 @@ function processResultEvent(
   emitEvent({
     type: isSuccess ? "completed" : "failed",
     threadId,
-    costUsd: resultCost,
+    costUsd: deltaCost,
   });
 
   logger.info(
     "agent-orchestrator",
-    `Agent ${threadId} finished: ${message.subtype} ($${resultCost.toFixed(4)})`
+    `Agent ${threadId} finished: ${message.subtype} (delta $${deltaCost.toFixed(4)}, cumulative $${cumulativeCost.toFixed(4)})`
   );
 }
 
@@ -592,7 +673,7 @@ export const agentOrchestrator = {
     logger.info("agent-orchestrator", `Agent ${threadId} cancelled`);
   },
 
-  async sendMessage(threadId: string, message: string): Promise<void> {
+  async sendMessage(threadId: string, message: string, imagePaths?: string[]): Promise<void> {
     // Try in-memory registry first, then fall back to DB-persisted session ID
     let sessionId = sessionRegistry.getSessionId(threadId);
     if (!sessionId) {
@@ -627,8 +708,10 @@ export const agentOrchestrator = {
       resolvePermissionConfig(appSettings);
     const model = appSettings.defaultModel || undefined;
 
+    const fullPrompt = buildPromptWithImages(message, imagePaths);
+
     const { events, kill } = spawnClaude({
-      prompt: message,
+      prompt: fullPrompt,
       cwd,
       resumeSessionId: sessionId,
       model,
