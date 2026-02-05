@@ -67,6 +67,8 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
     resumeSessionId,
     permissionMode,
     allowedTools,
+    disallowedTools,
+    appendSystemPrompt,
     claudePath,
   } = options;
 
@@ -94,6 +96,12 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
   }
   if (allowedTools && allowedTools.length > 0) {
     args.push("--allowedTools", ...allowedTools);
+  }
+  if (disallowedTools && disallowedTools.length > 0) {
+    args.push("--disallowedTools", ...disallowedTools);
+  }
+  if (appendSystemPrompt) {
+    args.push("--append-system-prompt", appendSystemPrompt);
   }
 
   logger.info("claude-cli", `Spawning: ${claudeBin} ${args.join(" ")}`);

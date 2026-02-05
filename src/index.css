@@ -25,24 +25,24 @@
   }
 
   .dark {
-    /* VS Code Dark+ theme */
-    --background: 0 0% 11.8%;
-    --foreground: 0 0% 80%;
-    --card: 240 2% 14.5%;
-    --card-foreground: 0 0% 80%;
-    --primary: 207 100% 41.6%;
+    /* Deep navy blue dark theme */
+    --background: 222 47% 11%;
+    --foreground: 213 31% 91%;
+    --card: 222 44% 14%;
+    --card-foreground: 213 31% 91%;
+    --primary: 210 100% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 2% 14.5%;
-    --secondary-foreground: 0 0% 80%;
-    --muted: 0 0% 20%;
-    --muted-foreground: 0 0% 52.2%;
-    --accent: 207.5 51.5% 30.8%;
-    --accent-foreground: 0 0% 90%;
-    --destructive: 0 86% 61%;
+    --secondary: 222 40% 18%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 222 40% 18%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 222 35% 22%;
+    --accent-foreground: 213 31% 91%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 23.5%;
-    --input: 0 0% 23.5%;
-    --ring: 203 100% 40%;
+    --border: 222 25% 24%;
+    --input: 222 30% 20%;
+    --ring: 210 100% 52%;
     --radius: 0.5rem;
   }
 }

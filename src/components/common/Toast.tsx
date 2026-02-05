@@ -32,7 +32,7 @@ export const ToastContainer: React.FC = () => {
     };
     ipc.on("notification", handler);
     return () => {
-      ipc.off("notification");
+      ipc.off("notification", handler);
     };
   }, [addToast]);
 

@@ -19,7 +19,7 @@ const EmbeddedTerminal = React.lazy(() =>
   import("./components/terminal/EmbeddedTerminal").then((m) => ({ default: m.EmbeddedTerminal }))
 );
 import { useProjectStore } from "./stores/projectStore";
-import { useAgentStore } from "./stores/agentStore";
+import { useAgentStore, initAgentListeners } from "./stores/agentStore";
 import { ipc } from "./lib/ipc-client";
 import type { Skill, Automation } from "./types/ipc";
 
@@ -41,6 +41,11 @@ export const App: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const { activeProjectId, projects } = useProjectStore();
   const { threads, activeThreadId, setActiveThread, cancelAgent } = useAgentStore();
+
+  // Register IPC listeners once so status updates always reach the store
+  useEffect(() => {
+    initAgentListeners();
+  }, []);
 
   // Global keyboard shortcuts
   useEffect(() => {

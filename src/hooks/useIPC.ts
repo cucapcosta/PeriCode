@@ -57,7 +57,7 @@ export function useIPCEvent<C extends IPCEventChannel>(
   useEffect(() => {
     ipc.on(channel, handler);
     return () => {
-      ipc.off(channel);
+      ipc.off(channel, handler);
     };
   }, [channel, handler]);
 }

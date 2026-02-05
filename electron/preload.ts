@@ -59,6 +59,9 @@ const VALID_INVOKE_CHANNELS = new Set([
   "export:diffPatch",
   "export:automationCsv",
   "export:costReport",
+  "notes:get",
+  "notes:save",
+  "notes:delete",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([
@@ -72,6 +75,11 @@ const VALID_EVENT_CHANNELS = new Set([
   "terminal:exit",
 ]);
 
+// Map renderer callbacks to the ipcRenderer wrapper functions,
+// so we can remove a specific listener without nuking all of them.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const listenerMap = new WeakMap<(...args: unknown[]) => void, (...args: any[]) => void>();
+
 const electronAPI = {
   invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
     if (!VALID_INVOKE_CHANNELS.has(channel)) {
@@ -84,7 +92,9 @@ const electronAPI = {
       console.warn(`Invalid IPC event channel: ${channel}`);
       return;
     }
-    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    const wrapper = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args);
+    listenerMap.set(callback, wrapper);
+    ipcRenderer.on(channel, wrapper);
   },
   once: (channel: string, callback: (...args: unknown[]) => void): void => {
     if (!VALID_EVENT_CHANNELS.has(channel)) {
@@ -92,6 +102,16 @@ const electronAPI = {
       return;
     }
     ipcRenderer.once(channel, (_event, ...args) => callback(...args));
+  },
+  removeListener: (channel: string, callback: (...args: unknown[]) => void): void => {
+    if (!VALID_EVENT_CHANNELS.has(channel)) {
+      return;
+    }
+    const wrapper = listenerMap.get(callback);
+    if (wrapper) {
+      ipcRenderer.removeListener(channel, wrapper);
+      listenerMap.delete(callback);
+    }
   },
   removeAllListeners: (channel: string): void => {
     if (!VALID_EVENT_CHANNELS.has(channel)) {

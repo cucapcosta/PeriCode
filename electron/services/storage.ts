@@ -12,6 +12,7 @@ import type {
   Automation,
   AutomationRun,
   AppSettings,
+  ModelTokenUsage,
 } from "../../src/types/ipc";
 
 let db: SqlJsDatabase | null = null;
@@ -89,10 +90,29 @@ const SCHEMA = `
     value JSON NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS model_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    model TEXT NOT NULL,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    cache_read_tokens INTEGER DEFAULT 0,
+    cache_creation_tokens INTEGER DEFAULT 0,
+    cost_usd REAL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE INDEX IF NOT EXISTS idx_threads_project ON threads(project_id);
   CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);
   CREATE INDEX IF NOT EXISTS idx_automations_project ON automations(project_id);
   CREATE INDEX IF NOT EXISTS idx_automation_runs_automation ON automation_runs(automation_id);
+  CREATE INDEX IF NOT EXISTS idx_model_usage_thread ON model_usage(thread_id);
+
+  CREATE TABLE IF NOT EXISTS thread_notes (
+    thread_id TEXT PRIMARY KEY REFERENCES threads(id),
+    content TEXT NOT NULL DEFAULT '',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `;
 
 function getDb(): SqlJsDatabase {
@@ -170,6 +190,8 @@ export const storage = {
   },
 
   removeProject(id: string): void {
+    getDb().run("DELETE FROM thread_notes WHERE thread_id IN (SELECT id FROM threads WHERE project_id = ?)", [id]);
+    getDb().run("DELETE FROM model_usage WHERE thread_id IN (SELECT id FROM threads WHERE project_id = ?)", [id]);
     getDb().run("DELETE FROM messages WHERE thread_id IN (SELECT id FROM threads WHERE project_id = ?)", [id]);
     getDb().run("DELETE FROM threads WHERE project_id = ?", [id]);
     getDb().run("DELETE FROM automation_runs WHERE automation_id IN (SELECT id FROM automations WHERE project_id = ?)", [id]);
@@ -262,6 +284,8 @@ export const storage = {
   },
 
   deleteThread(id: string): void {
+    getDb().run("DELETE FROM thread_notes WHERE thread_id = ?", [id]);
+    getDb().run("DELETE FROM model_usage WHERE thread_id = ?", [id]);
     getDb().run("DELETE FROM messages WHERE thread_id = ?", [id]);
     getDb().run("DELETE FROM threads WHERE id = ?", [id]);
     saveToFile();
@@ -458,6 +482,112 @@ export const storage = {
     }
     stmt.free();
     return rows;
+  },
+
+  // ── Model Usage ─────────────────────────────────────────
+
+  addModelUsage(threadId: string, modelUsage: Record<string, ModelTokenUsage>): void {
+    for (const [model, usage] of Object.entries(modelUsage)) {
+      getDb().run(
+        `INSERT INTO model_usage (thread_id, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [threadId, model, usage.inputTokens, usage.outputTokens, usage.cacheReadInputTokens, usage.cacheCreationInputTokens, usage.costUsd]
+      );
+    }
+    saveToFile();
+  },
+
+  getThreadModelUsage(threadId: string): Record<string, ModelTokenUsage> {
+    const stmt = getDb().prepare(
+      `SELECT model,
+              SUM(input_tokens) as input_tokens,
+              SUM(output_tokens) as output_tokens,
+              SUM(cache_read_tokens) as cache_read_tokens,
+              SUM(cache_creation_tokens) as cache_creation_tokens,
+              SUM(cost_usd) as cost_usd
+       FROM model_usage WHERE thread_id = ? GROUP BY model`
+    );
+    stmt.bind([threadId]);
+    const result: Record<string, ModelTokenUsage> = {};
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, unknown>;
+      result[row.model as string] = {
+        inputTokens: (row.input_tokens as number) || 0,
+        outputTokens: (row.output_tokens as number) || 0,
+        cacheReadInputTokens: (row.cache_read_tokens as number) || 0,
+        cacheCreationInputTokens: (row.cache_creation_tokens as number) || 0,
+        costUsd: (row.cost_usd as number) || 0,
+      };
+    }
+    stmt.free();
+    return result;
+  },
+
+  getAllProjectCosts(): Map<string, number> {
+    const stmt = getDb().prepare(
+      `SELECT t.project_id, SUM(m.cost_usd) as total_cost
+       FROM messages m JOIN threads t ON m.thread_id = t.id
+       WHERE m.cost_usd IS NOT NULL
+       GROUP BY t.project_id`
+    );
+    const costs = new Map<string, number>();
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, unknown>;
+      costs.set(row.project_id as string, (row.total_cost as number) || 0);
+    }
+    stmt.free();
+    return costs;
+  },
+
+  getGlobalModelUsageFromDb(): Record<string, ModelTokenUsage> {
+    const stmt = getDb().prepare(
+      `SELECT model,
+              SUM(input_tokens) as input_tokens,
+              SUM(output_tokens) as output_tokens,
+              SUM(cache_read_tokens) as cache_read_tokens,
+              SUM(cache_creation_tokens) as cache_creation_tokens,
+              SUM(cost_usd) as cost_usd
+       FROM model_usage GROUP BY model`
+    );
+    const result: Record<string, ModelTokenUsage> = {};
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, unknown>;
+      result[row.model as string] = {
+        inputTokens: (row.input_tokens as number) || 0,
+        outputTokens: (row.output_tokens as number) || 0,
+        cacheReadInputTokens: (row.cache_read_tokens as number) || 0,
+        cacheCreationInputTokens: (row.cache_creation_tokens as number) || 0,
+        costUsd: (row.cost_usd as number) || 0,
+      };
+    }
+    stmt.free();
+    return result;
+  },
+
+  // ── Thread Notes ─────────────────────────────────────────
+
+  getThreadNote(threadId: string): string | null {
+    const stmt = getDb().prepare("SELECT content FROM thread_notes WHERE thread_id = ?");
+    stmt.bind([threadId]);
+    if (!stmt.step()) { stmt.free(); return null; }
+    const row = stmt.getAsObject() as Record<string, unknown>;
+    stmt.free();
+    return (row.content as string) ?? null;
+  },
+
+  saveThreadNote(threadId: string, content: string): void {
+    getDb().run(
+      `INSERT INTO thread_notes (thread_id, content, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(thread_id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
+      [threadId, content, new Date().toISOString()]
+    );
+    saveToFile();
+  },
+
+  deleteThreadNote(threadId: string): void {
+    getDb().run("DELETE FROM thread_notes WHERE thread_id = ?", [threadId]);
+    saveToFile();
   },
 
   // ── App Settings ──────────────────────────────────────────

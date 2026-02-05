@@ -28,9 +28,9 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
       fontSize: 13,
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace",
       theme: {
-        background: "#1e1e1e",
-        foreground: "#cccccc",
-        cursor: "#aeafad",
+        background: "#151b2b",
+        foreground: "#d6dce8",
+        cursor: "#a0aec0",
         selectionBackground: "#264f78",
         selectionForeground: "#ffffff",
         black: "#000000",
@@ -116,17 +116,17 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
 
     return () => {
       resizeObserver.disconnect();
-      ipc.off("terminal:data");
-      ipc.off("terminal:exit");
+      ipc.off("terminal:data", dataHandler);
+      ipc.off("terminal:exit", exitHandler);
       term.dispose();
       ipc.invoke("terminal:destroy", id).catch(() => {});
     };
   }, [id, cwd]);
 
   return (
-    <div className="flex flex-col h-full bg-[#1a1a2e]">
+    <div className="flex flex-col h-full bg-[#151b2b]">
       {/* Terminal header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#16162a] border-b border-border">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[#1a2138] border-b border-border">
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-muted-foreground">
             {connected ? ">" : "x"} Terminal

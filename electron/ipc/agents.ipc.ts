@@ -91,12 +91,14 @@ export function registerAgentHandlers(): void {
       if (msg.tokensOut != null) totalTokensOut += msg.tokensOut;
     }
 
+    const modelUsage = storage.getThreadModelUsage(threadId);
+
     return {
       threadId,
       totalCostUsd,
       totalTokensIn,
       totalTokensOut,
-      modelUsage: {},
+      modelUsage,
     };
   });
 }

@@ -64,6 +64,9 @@ app.whenReady().then(async () => {
   // since no agents are actually running after an app restart
   storage.markStaleRunningThreads();
 
+  // Restore historical cost data from DB so StatusBar shows accumulated costs
+  agentOrchestrator.loadCostsFromDb();
+
   registerAllIPCHandlers();
   createWindow();
 

@@ -33,13 +33,13 @@ export const AllAgentsDashboard: React.FC = () => {
     loadAll();
 
     // Set up event listeners for status changes
-    const handleStatus = (_threadId: unknown, _status: unknown) => {
+    const handleStatus = () => {
       loadAll();
     };
-    window.electronAPI.on("agent:status", handleStatus);
+    ipc.on("agent:status", handleStatus);
 
     return () => {
-      window.electronAPI.removeAllListeners("agent:status");
+      ipc.off("agent:status", handleStatus);
     };
   }, [projects]);
 

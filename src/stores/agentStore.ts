@@ -7,6 +7,7 @@ import type {
   StreamMessage,
   StreamingContentBlock,
   ModelTokenUsage,
+  ErrorInfo,
 } from "@/types/ipc";
 
 interface ThreadCostState {
@@ -318,3 +319,24 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set({ errors });
   },
 }));
+
+// ── Global IPC listeners (registered once, always active) ──
+
+let listenersInitialized = false;
+
+export function initAgentListeners(): void {
+  if (listenersInitialized) return;
+  listenersInitialized = true;
+
+  ipc.on("agent:message", (threadId: string, message: StreamMessage) => {
+    useAgentStore.getState().handleStreamMessage(threadId, message);
+  });
+
+  ipc.on("agent:status", (threadId: string, status: string) => {
+    useAgentStore.getState().handleStatusChange(threadId, status);
+  });
+
+  ipc.on("agent:error", (threadId: string, error: ErrorInfo) => {
+    useAgentStore.getState().handleError(threadId, error.message);
+  });
+}

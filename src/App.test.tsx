@@ -8,6 +8,7 @@ beforeEach(() => {
     invoke: vi.fn().mockResolvedValue([]),
     on: vi.fn(),
     once: vi.fn(),
+    removeListener: vi.fn(),
     removeAllListeners: vi.fn(),
   };
 });

@@ -176,6 +176,16 @@ const DEFAULT_TOOLS = [
   "Glob", "Grep", "WebSearch", "WebFetch",
 ];
 
+// Tools that break non-interactive (-p) mode — plan mode requires user
+// approval which is impossible in print mode, so the agent just plans
+// and exits without implementing anything.
+const DISALLOWED_TOOLS = ["EnterPlanMode"];
+
+const NON_INTERACTIVE_SYSTEM_PROMPT =
+  "You are running in non-interactive print mode. " +
+  "DO NOT enter plan mode. Implement all requested changes directly. " +
+  "Write code, create files, and make edits immediately without asking for confirmation.";
+
 function resolvePermissionConfig(
   settings: AppSettings,
   configAllowedTools?: string[]
@@ -193,7 +203,7 @@ function resolvePermissionConfig(
       };
     case "acceptEdits":
     default:
-      return { permissionMode: "acceptEdits", allowedTools: DEFAULT_TOOLS };
+      return { permissionMode: "bypassPermissions", allowedTools: DEFAULT_TOOLS };
   }
 }
 
@@ -268,6 +278,8 @@ async function launchImmediate(
     model: config.model,
     permissionMode: resolvedMode,
     allowedTools: resolvedTools,
+    disallowedTools: DISALLOWED_TOOLS,
+    appendSystemPrompt: NON_INTERACTIVE_SYSTEM_PROMPT,
     claudePath: getClaudeCliPath(),
   });
 
@@ -405,6 +417,10 @@ function processResultEvent(
     totalTokensIn,
     totalTokensOut
   );
+
+  if (parsedModelUsage) {
+    storage.addModelUsage(threadId, parsedModelUsage);
+  }
 
   trackCost(
     threadId,
@@ -607,14 +623,19 @@ export const agentOrchestrator = {
     const cwd = thread?.worktreePath ?? projectData?.path ?? process.cwd();
 
     const appSettings = storage.getAppSettings();
-    const { permissionMode: resolvedMode } =
+    const { permissionMode: resolvedMode, allowedTools: resolvedTools } =
       resolvePermissionConfig(appSettings);
+    const model = appSettings.defaultModel || undefined;
 
     const { events, kill } = spawnClaude({
       prompt: message,
       cwd,
       resumeSessionId: sessionId,
+      model,
       permissionMode: resolvedMode,
+      allowedTools: resolvedTools,
+      disallowedTools: DISALLOWED_TOOLS,
+      appendSystemPrompt: NON_INTERACTIVE_SYSTEM_PROMPT,
       claudePath: getClaudeCliPath(),
     });
 
@@ -767,5 +788,21 @@ export const agentOrchestrator = {
       copy[model] = { ...usage };
     }
     return copy;
+  },
+
+  loadCostsFromDb(): void {
+    try {
+      const dbProjectCosts = storage.getAllProjectCosts();
+      for (const [projectId, cost] of dbProjectCosts) {
+        projectCosts.set(projectId, cost);
+      }
+
+      const dbModelUsage = storage.getGlobalModelUsageFromDb();
+      mergeModelUsage(globalModelUsage, dbModelUsage);
+
+      logger.info("agent-orchestrator", "Loaded historical costs from database");
+    } catch (err) {
+      logger.warn("agent-orchestrator", "Failed to load costs from database", err);
+    }
   },
 };

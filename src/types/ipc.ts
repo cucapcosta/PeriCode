@@ -312,6 +312,11 @@ export interface IPCInvokeChannels {
   "thread:fork": { args: [threadId: string]; return: ThreadInfo };
   "thread:getCostSummary": { args: [threadId: string]; return: ThreadCostSummary };
 
+  // Thread Notes
+  "notes:get": { args: [threadId: string]; return: string | null };
+  "notes:save": { args: [threadId: string, content: string]; return: void };
+  "notes:delete": { args: [threadId: string]; return: void };
+
   // Diff / Worktrees
   "worktree:getDiff": { args: [threadId: string]; return: FileDiff[] };
   "worktree:acceptAll": { args: [threadId: string]; return: void };

@@ -68,15 +68,19 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
 
   // Listen for cost updates to refresh sooner
   useEffect(() => {
-    const handler = () => {
+    const costHandler = () => {
       fetchStatus();
       fetchThreadCost();
     };
-    ipc.on("agent:cost", handler);
-    ipc.on("agent:status", handler);
+    const statusHandler = () => {
+      fetchStatus();
+      fetchThreadCost();
+    };
+    ipc.on("agent:cost", costHandler);
+    ipc.on("agent:status", statusHandler);
     return () => {
-      ipc.off("agent:cost");
-      ipc.off("agent:status");
+      ipc.off("agent:cost", costHandler);
+      ipc.off("agent:status", statusHandler);
     };
   }, [activeThreadId]);
 

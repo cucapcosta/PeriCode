@@ -47,9 +47,15 @@ export const ipc = {
   },
 
   /**
-   * Remove all listeners for an event channel.
+   * Remove a specific listener for an event channel.
    */
-  off: (channel: IPCEventChannel): void => {
-    window.electronAPI.removeAllListeners(channel);
+  off: <C extends IPCEventChannel>(
+    channel: C,
+    callback: (...args: IPCEventChannels[C]) => void
+  ): void => {
+    window.electronAPI.removeListener(
+      channel,
+      callback as (...args: unknown[]) => void
+    );
   },
 };

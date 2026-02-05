@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAgentStore } from "@/stores/agentStore";
+import { useNotesStore } from "@/stores/notesStore";
 import { ActivityIndicator } from "@/components/agents/ActivityIndicator";
+import { ThreadNotesPanel } from "@/components/agents/ThreadNotesPanel";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ipc } from "@/lib/ipc-client";
-import type { Skill, StreamMessage, StreamingContentBlock, MessageContent, ErrorInfo } from "@/types/ipc";
+import type { Skill, StreamingContentBlock, MessageContent } from "@/types/ipc";
 
 export const ThreadView: React.FC = () => {
   const {
@@ -14,12 +16,10 @@ export const ThreadView: React.FC = () => {
     errors,
     threads,
     sendMessage,
-    handleStreamMessage,
-    handleStatusChange,
-    handleError,
   } = useAgentStore();
   const [input, setInput] = useState("");
   const [showDiff, setShowDiff] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [activeSkills, setActiveSkills] = useState<Map<string, string[]>>(new Map());
   const [skillSuggestions, setSkillSuggestions] = useState<Skill[]>([]);
@@ -27,6 +27,7 @@ export const ThreadView: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const noteContent = useNotesStore((s) => activeThreadId ? s.notes.get(activeThreadId) : undefined);
   const activeThread = threads.find((t) => t.id === activeThreadId);
   const threadMessages = activeThreadId
     ? messages.get(activeThreadId) || []
@@ -79,38 +80,8 @@ export const ThreadView: React.FC = () => {
     ipc.invoke("skill:list").then(setSkills).catch(() => {});
   }, []);
 
-  // Listen for streaming messages
-  const onStreamMessage = useCallback(
-    (threadId: string, message: StreamMessage) => {
-      handleStreamMessage(threadId, message);
-    },
-    [handleStreamMessage]
-  );
-
-  const onStatusChange = useCallback(
-    (threadId: string, status: string) => {
-      handleStatusChange(threadId, status);
-    },
-    [handleStatusChange]
-  );
-
-  const onError = useCallback(
-    (threadId: string, error: ErrorInfo) => {
-      handleError(threadId, error.message);
-    },
-    [handleError]
-  );
-
-  useEffect(() => {
-    ipc.on("agent:message", onStreamMessage);
-    ipc.on("agent:status", onStatusChange);
-    ipc.on("agent:error", onError);
-    return () => {
-      ipc.off("agent:message");
-      ipc.off("agent:status");
-      ipc.off("agent:error");
-    };
-  }, [onStreamMessage, onStatusChange, onError]);
+  // IPC listeners for agent:message, agent:status, agent:error are registered
+  // globally in agentStore.initAgentListeners() (called once from App.tsx).
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -306,10 +277,29 @@ export const ThreadView: React.FC = () => {
             Diff
           </button>
         )}
+        <button
+          onClick={() => setShowNotes((v) => !v)}
+          className={`flex-shrink-0 px-2 py-0.5 rounded border text-xs transition-colors ${
+            showNotes
+              ? "border-primary/50 bg-primary/10 text-primary"
+              : "border-border text-foreground hover:bg-accent"
+          }`}
+          title="Anotações privadas"
+        >
+          Notes
+          {!showNotes && noteContent && noteContent.length > 0 && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary ml-1 -mt-1" />
+          )}
+        </button>
         <span className="flex-shrink-0 text-xs text-muted-foreground capitalize">
           {activeThread.status}
         </span>
       </div>
+
+      {/* Thread Notes */}
+      {showNotes && activeThreadId && (
+        <ThreadNotesPanel threadId={activeThreadId} />
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
