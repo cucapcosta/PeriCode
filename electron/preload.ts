@@ -81,6 +81,7 @@ const VALID_INVOKE_CHANNELS = new Set([
   "git:pull",
   "git:checkout",
   "git:branch",
+  "git:publish",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([

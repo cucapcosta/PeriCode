@@ -362,4 +362,128 @@ export function registerWorktreeHandlers(): void {
       }
     }
   );
+
+  // Git publish - full release workflow: update version, commit, push, tag
+  ipcMain.handle(
+    "git:publish",
+    async (_event, projectId: string, version: string): Promise<{
+      success: boolean;
+      steps: { step: string; success: boolean; message: string }[];
+      error?: string;
+    }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, steps: [], error: "Project not found" };
+      }
+
+      const steps: { step: string; success: boolean; message: string }[] = [];
+      const fs = require("fs");
+      const path = require("path");
+
+      // Validate version format (should be like 0.4, 0.4.0, 1.0.0, etc.)
+      const versionMatch = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?$/);
+      if (!versionMatch) {
+        return { success: false, steps: [], error: "Invalid version format. Use X.Y or X.Y.Z (e.g., 0.4 or 0.4.0)" };
+      }
+
+      // Normalize version: if no patch, add .0
+      const normalizedVersion = versionMatch[3] !== undefined
+        ? version
+        : `${version}.0`;
+      const displayVersion = `v${version.replace(/^v/, "")}`;
+
+      try {
+        const git = simpleGit(project.path);
+
+        // Step 1: Update package.json version
+        const packageJsonPath = path.join(project.path, "package.json");
+        try {
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+          packageJson.version = normalizedVersion;
+          fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
+          steps.push({ step: "Update package.json", success: true, message: `Version set to ${normalizedVersion}` });
+        } catch (err) {
+          steps.push({ step: "Update package.json", success: false, message: err instanceof Error ? err.message : String(err) });
+          return { success: false, steps, error: "Failed to update package.json" };
+        }
+
+        // Step 2: Update Sidebar.tsx version display
+        const sidebarPath = path.join(project.path, "src", "components", "layout", "Sidebar.tsx");
+        try {
+          let sidebarContent = fs.readFileSync(sidebarPath, "utf-8");
+          // Replace the version string in Sidebar
+          sidebarContent = sidebarContent.replace(
+            /v\d+\.\d+(?:\.\d+)?/,
+            displayVersion
+          );
+          fs.writeFileSync(sidebarPath, sidebarContent);
+          steps.push({ step: "Update Sidebar version", success: true, message: `Display version set to ${displayVersion}` });
+        } catch (err) {
+          // Non-fatal - sidebar might not exist or have different structure
+          steps.push({ step: "Update Sidebar version", success: false, message: `Skipped: ${err instanceof Error ? err.message : String(err)}` });
+        }
+
+        // Step 3: Stage all changes
+        try {
+          await git.add(".");
+          steps.push({ step: "Stage changes", success: true, message: "All changes staged" });
+        } catch (err) {
+          steps.push({ step: "Stage changes", success: false, message: err instanceof Error ? err.message : String(err) });
+          return { success: false, steps, error: "Failed to stage changes" };
+        }
+
+        // Step 4: Commit
+        try {
+          const commitResult = await git.commit(`Release ${displayVersion}`);
+          steps.push({ step: "Commit", success: true, message: `Committed: ${commitResult.commit || "OK"}` });
+        } catch (err) {
+          // Check if nothing to commit
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg.includes("nothing to commit")) {
+            steps.push({ step: "Commit", success: true, message: "No changes to commit" });
+          } else {
+            steps.push({ step: "Commit", success: false, message: errMsg });
+            return { success: false, steps, error: "Failed to commit" };
+          }
+        }
+
+        // Step 5: Push changes
+        try {
+          await git.push();
+          steps.push({ step: "Push changes", success: true, message: "Pushed to remote" });
+        } catch (err) {
+          steps.push({ step: "Push changes", success: false, message: err instanceof Error ? err.message : String(err) });
+          return { success: false, steps, error: "Failed to push changes" };
+        }
+
+        // Step 6: Create tag
+        const tagName = displayVersion;
+        try {
+          await git.addTag(tagName);
+          steps.push({ step: "Create tag", success: true, message: `Tag ${tagName} created` });
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg.includes("already exists")) {
+            steps.push({ step: "Create tag", success: false, message: `Tag ${tagName} already exists` });
+            return { success: false, steps, error: `Tag ${tagName} already exists. Use a different version.` };
+          }
+          steps.push({ step: "Create tag", success: false, message: errMsg });
+          return { success: false, steps, error: "Failed to create tag" };
+        }
+
+        // Step 7: Push tag
+        try {
+          await git.pushTags();
+          steps.push({ step: "Push tag", success: true, message: `Tag ${tagName} pushed - Release workflow will start` });
+        } catch (err) {
+          steps.push({ step: "Push tag", success: false, message: err instanceof Error ? err.message : String(err) });
+          return { success: false, steps, error: "Failed to push tag" };
+        }
+
+        return { success: true, steps };
+      } catch (err) {
+        return { success: false, steps, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
 }

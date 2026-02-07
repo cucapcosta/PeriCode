@@ -362,6 +362,7 @@ export interface IPCInvokeChannels {
   "git:pull": { args: [projectId: string, remote?: string, branch?: string]; return: { success: boolean; summary?: string; error?: string } };
   "git:checkout": { args: [projectId: string, branchOrPath: string, createNew?: boolean]; return: { success: boolean; error?: string } };
   "git:branch": { args: [projectId: string, action: "list" | "create" | "delete", branchName?: string]; return: { success: boolean; branches?: string[]; current?: string; error?: string } };
+  "git:publish": { args: [projectId: string, version: string]; return: { success: boolean; steps: { step: string; success: boolean; message: string }[]; error?: string } };
 
   // Skills
   "skill:list": { args: []; return: Skill[] };

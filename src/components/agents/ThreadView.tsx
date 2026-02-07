@@ -95,11 +95,13 @@ export const ThreadView: React.FC = () => {
     { name: "pull", description: "Pull from remote" },
     { name: "checkout", description: "Switch branch" },
     { name: "branch", description: "List branches" },
+    { name: "publish", description: "Publish release (version)" },
   ];
   const [buildOutput, setBuildOutput] = useState<{ success: boolean; output: string } | null>(null);
   const [gitOutput, setGitOutput] = useState<{ type: string; success: boolean; message: string } | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
   const [branchInput, setBranchInput] = useState("");
+  const [versionInput, setVersionInput] = useState("");
   const [commandSuggestions, setCommandSuggestions] = useState<typeof slashCommands>([]);
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
 
@@ -422,6 +424,29 @@ export const ThreadView: React.FC = () => {
           }
         } catch (err) {
           setGitOutput({ type: "branch", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "publish": {
+        if (!activeProjectId) return;
+        // If no version, prompt for one
+        if (!versionInput.trim()) {
+          setGitOutput({ type: "publish", success: false, message: "Enter the version to publish (e.g., 0.4, 0.4.1, 1.0.0):" });
+          return;
+        }
+        setGitOutput({ type: "publish", success: true, message: `Publishing version ${versionInput}...\n\nThis will:\n1. Update package.json version\n2. Update Sidebar display version\n3. Stage and commit changes\n4. Push to remote\n5. Create and push version tag\n6. Trigger GitHub Actions release workflow` });
+        try {
+          const result = await ipc.invoke("git:publish", activeProjectId, versionInput.trim());
+          if (result.success) {
+            const stepsOutput = result.steps.map(s => `${s.success ? "✓" : "✗"} ${s.step}: ${s.message}`).join("\n");
+            setGitOutput({ type: "publish", success: true, message: `Release v${versionInput.trim()} published!\n\n${stepsOutput}\n\n🚀 GitHub Actions will now build and create the release.` });
+            setVersionInput("");
+          } else {
+            const stepsOutput = result.steps.map(s => `${s.success ? "✓" : "✗"} ${s.step}: ${s.message}`).join("\n");
+            setGitOutput({ type: "publish", success: false, message: `${result.error}\n\n${stepsOutput}` });
+          }
+        } catch (err) {
+          setGitOutput({ type: "publish", success: false, message: `Error: ${err}` });
         }
         break;
       }
@@ -917,6 +942,30 @@ export const ThreadView: React.FC = () => {
                   className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
                 >
                   Checkout
+                </button>
+              </div>
+            )}
+            {/* Version input for publish */}
+            {gitOutput.type === "publish" && !gitOutput.success && gitOutput.message.includes("Enter the version") && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="text"
+                  value={versionInput}
+                  onChange={(e) => setVersionInput(e.target.value)}
+                  placeholder="Version (e.g., 0.4, 0.4.1, 1.0.0)..."
+                  className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && versionInput.trim()) {
+                      executeCommand("publish");
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => executeCommand("publish")}
+                  disabled={!versionInput.trim()}
+                  className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                >
+                  Publish
                 </button>
               </div>
             )}

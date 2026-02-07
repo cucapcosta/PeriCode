@@ -1,0 +1,188 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v0.4.0)'
+        required: true
+        default: 'v0.4.0'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            arch: x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Package app (Windows)
+        if: matrix.platform == 'win32'
+        run: npm run make -- --arch=${{ matrix.arch }}
+
+      - name: Package app (Linux)
+        if: matrix.platform == 'linux'
+        run: npm run make -- --arch=${{ matrix.arch }}
+
+      - name: Package app (macOS)
+        if: matrix.platform == 'darwin'
+        run: npm run make -- --arch=${{ matrix.arch }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: List output files
+        run: |
+          echo "=== Out directory ==="
+          ls -la out/ || dir out\
+        shell: bash
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pericode-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            out/make/**/*.exe
+            out/make/**/*.zip
+            out/make/**/*.nupkg
+          if-no-files-found: warn
+
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pericode-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            out/make/**/*.deb
+            out/make/**/*.rpm
+            out/make/**/*.zip
+          if-no-files-found: warn
+
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pericode-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            out/make/**/*.dmg
+            out/make/**/*.zip
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          find artifacts -type f -name "*" | head -50
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+
+          # Find and copy all distributable files
+          find artifacts -type f \( \
+            -name "*.exe" -o \
+            -name "*.dmg" -o \
+            -name "*.deb" -o \
+            -name "*.rpm" -o \
+            -name "*.zip" -o \
+            -name "*.nupkg" \
+          \) -exec cp {} release-files/ \;
+
+          echo "=== Release files ==="
+          ls -la release-files/
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: PeriCode ${{ steps.version.outputs.version }}
+          body: |
+            ## PeriCode ${{ steps.version.outputs.version }}
+
+            Uma ferramenta periquitante para desenvolvimento com Claude.
+
+            ### Downloads
+
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Windows | x64 | `pericode-*-win32-x64-*.exe` |
+            | macOS | x64 (Intel) | `pericode-*-darwin-x64-*.dmg` |
+            | macOS | arm64 (Apple Silicon) | `pericode-*-darwin-arm64-*.dmg` |
+            | Linux | x64 | `pericode-*-linux-x64-*.deb` / `.rpm` |
+
+            ### Installation
+
+            **Windows:** Run the `.exe` installer or extract the `.zip`
+
+            **macOS:** Open the `.dmg` and drag PeriCode to Applications
+
+            **Linux (Debian/Ubuntu):** `sudo dpkg -i pericode-*.deb`
+
+            **Linux (Fedora/RHEL):** `sudo rpm -i pericode-*.rpm`
+
+            ### Requirements
+
+            - Claude CLI must be installed and authenticated
+            - Node.js 18+ (for development only)
+
+          files: release-files/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

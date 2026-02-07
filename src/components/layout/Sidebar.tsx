@@ -104,7 +104,7 @@ export const Sidebar: React.FC = () => {
           Uma ferramenta periquitante
         </p>
         <p className="text-[10px] text-muted-foreground/60 mt-0.5 hidden sm:block">
-          v0.4
+          v0.5
         </p>
       </div>
 
