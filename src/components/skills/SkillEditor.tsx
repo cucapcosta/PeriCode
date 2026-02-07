@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { ipc } from "@/lib/ipc-client";
 import type { Skill, SkillDetail, SkillDefinition } from "@/types/ipc";
+import { Button } from "@/components/ui/Button";
+
+const CloseIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
 
 interface SkillEditorProps {
   open: boolean;
@@ -148,16 +156,16 @@ export const SkillEditor: React.FC<SkillEditorProps> = ({
         onClick={onClose}
       />
 
-      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+      <div className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-[calc(100%-1rem)] sm:max-w-xl md:max-w-2xl lg:max-w-3xl mx-2 sm:mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">
             {editingSkill ? "Edit Skill" : "New Skill"}
           </h2>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground text-lg"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            x
+            <CloseIcon />
           </button>
         </div>
 
@@ -345,20 +353,17 @@ export const SkillEditor: React.FC<SkillEditorProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-          >
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30">
+          <Button variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            loading={saving}
           >
-            {saving ? "Saving..." : editingSkill ? "Update Skill" : "Create Skill"}
-          </button>
+            {editingSkill ? "Update Skill" : "Create Skill"}
+          </Button>
         </div>
       </div>
     </div>

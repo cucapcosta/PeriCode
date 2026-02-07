@@ -61,10 +61,10 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-end pt-12 pr-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-end pt-12 pr-2 sm:pr-4">
       <div className="absolute inset-0" onClick={onClose} />
 
-      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-80 max-h-[70vh] flex flex-col">
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-[calc(100%-1rem)] sm:w-80 max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
           <div className="flex items-center gap-2">

@@ -22,6 +22,10 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [previewSkill, setPreviewSkill] = useState<SkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showImportGit, setShowImportGit] = useState(false);
+  const [gitUrl, setGitUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSkills();
@@ -74,6 +78,24 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({
       onDelete?.(skill);
     } catch (err) {
       console.error("Failed to delete skill:", err);
+    }
+  };
+
+  const handleImportFromGit = async () => {
+    if (!gitUrl.trim()) return;
+
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const importedSkills = await ipc.invoke("skill:importFromGit", gitUrl.trim());
+      setSkills((prev) => [...importedSkills, ...prev]);
+      setShowImportGit(false);
+      setGitUrl("");
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Failed to import skills");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -146,6 +168,13 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({
             List
           </button>
         </div>
+
+        <button
+          onClick={() => setShowImportGit(true)}
+          className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+        >
+          Import from Git
+        </button>
       </div>
 
       {/* Skills content */}
@@ -269,6 +298,63 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({
         )}
       </div>
 
+      {/* Import from Git modal */}
+      {showImportGit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => !importing && setShowImportGit(false)}
+          />
+          <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-lg font-semibold text-foreground">
+                Import Skill from Git
+              </h2>
+              <button
+                onClick={() => !importing && setShowImportGit(false)}
+                className="text-muted-foreground hover:text-foreground text-lg"
+                disabled={importing}
+              >
+                x
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-sm text-muted-foreground mb-4">
+                Enter a Git repository URL containing SKILL.md files. The repository will be cloned to your skills directory.
+              </p>
+              <input
+                type="text"
+                value={gitUrl}
+                onChange={(e) => setGitUrl(e.target.value)}
+                placeholder="https://github.com/user/skill-repo.git"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={importing}
+                onKeyDown={(e) => e.key === "Enter" && handleImportFromGit()}
+              />
+              {importError && (
+                <p className="text-sm text-destructive mt-2">{importError}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+              <button
+                onClick={() => setShowImportGit(false)}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-accent transition-colors"
+                disabled={importing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportFromGit}
+                disabled={!gitUrl.trim() || importing}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {importing ? "Importing..." : "Import"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Preview panel */}
       {previewSkill && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -276,8 +362,8 @@ export const SkillBrowser: React.FC<SkillBrowserProps> = ({
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => setPreviewSkill(null)}
           />
-          <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-2xl mx-4 max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-[calc(100%-1rem)] sm:max-w-xl md:max-w-2xl mx-2 sm:mx-4 max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">
                   {previewSkill.name}

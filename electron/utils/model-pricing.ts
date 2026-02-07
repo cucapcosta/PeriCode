@@ -12,6 +12,7 @@ interface ModelPricing {
 
 const PRICING_TABLE: Record<string, ModelPricing> = {
   // Opus family
+  "opus-4.6":  { inputPerMTok: 5,     outputPerMTok: 25,    cacheWritePerMTok: 6.25,   cacheReadPerMTok: 0.50  },
   "opus-4.5":  { inputPerMTok: 5,     outputPerMTok: 25,    cacheWritePerMTok: 6.25,   cacheReadPerMTok: 0.50  },
   "opus-4.1":  { inputPerMTok: 15,    outputPerMTok: 75,    cacheWritePerMTok: 18.75,  cacheReadPerMTok: 1.50  },
   "opus-4":    { inputPerMTok: 15,    outputPerMTok: 75,    cacheWritePerMTok: 18.75,  cacheReadPerMTok: 1.50  },

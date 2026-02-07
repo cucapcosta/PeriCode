@@ -16,6 +16,7 @@ export interface ProjectSettings {
   systemPrompt?: string;
   maxBudgetUsd?: number;
   maxConcurrentAgents?: number;
+  buildCommand?: string;
 }
 
 export interface ThreadInfo {
@@ -340,9 +341,27 @@ export interface IPCInvokeChannels {
     return: void;
   };
   "worktree:openInVSCode": {
-    args: [filePath: string, line?: number];
+    args: [filePath: string, lineOrProjectPath?: number | string, line?: number];
     return: void;
   };
+
+  // Git
+  "git:getCurrentBranch": { args: [projectId: string]; return: string | null };
+  "git:getDiffStats": { args: [projectId: string]; return: { additions: number; deletions: number; files: number } | null };
+  "git:status": { args: [projectId: string]; return: {
+    staged: string[];
+    modified: string[];
+    untracked: string[];
+    ahead: number;
+    behind: number;
+    current: string | null;
+  } | null };
+  "git:add": { args: [projectId: string, files: string[]]; return: { success: boolean; error?: string } };
+  "git:commit": { args: [projectId: string, message: string]; return: { success: boolean; hash?: string; error?: string } };
+  "git:push": { args: [projectId: string, remote?: string, branch?: string]; return: { success: boolean; error?: string } };
+  "git:pull": { args: [projectId: string, remote?: string, branch?: string]; return: { success: boolean; summary?: string; error?: string } };
+  "git:checkout": { args: [projectId: string, branchOrPath: string, createNew?: boolean]; return: { success: boolean; error?: string } };
+  "git:branch": { args: [projectId: string, action: "list" | "create" | "delete", branchName?: string]; return: { success: boolean; branches?: string[]; current?: string; error?: string } };
 
   // Skills
   "skill:list": { args: []; return: Skill[] };
@@ -355,6 +374,7 @@ export interface IPCInvokeChannels {
   "skill:delete": { args: [id: string]; return: void };
   "skill:export": { args: [id: string]; return: { path: string } };
   "skill:import": { args: [archivePath: string]; return: Skill };
+  "skill:importFromGit": { args: [gitUrl: string]; return: Skill[] };
 
   // Automations
   "automation:list": { args: [projectId: string]; return: Automation[] };
@@ -416,6 +436,13 @@ export interface IPCInvokeChannels {
   "image:pick": { args: []; return: ImageAttachment[] | null };
   "image:readBase64": { args: [filePath: string]; return: string | null };
   "image:validatePath": { args: [filePath: string]; return: boolean };
+  "image:saveFromClipboard": { args: []; return: ImageAttachment | null };
+  "image:saveFromBase64": { args: [dataUrl: string, mimeType: string]; return: ImageAttachment | null };
+
+  // Commands
+  "command:openVSCode": { args: [projectPath: string]; return: void };
+  "command:rebuild": { args: [projectPath: string]; return: void };
+  "command:build": { args: [projectPath: string, buildCommand: string]; return: { success: boolean; output: string } };
 }
 
 // IPC event channel map (main -> renderer streaming)

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAgentStore } from "@/stores/agentStore";
+import { useProjectStore } from "@/stores/projectStore";
 import { useNotesStore } from "@/stores/notesStore";
 import { ActivityIndicator } from "@/components/agents/ActivityIndicator";
 import { ThreadNotesPanel } from "@/components/agents/ThreadNotesPanel";
@@ -44,7 +45,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-background/80 border border-border text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity"
+      className="absolute top-1.5 right-1.5 px-2 py-1 rounded-md bg-background/80 border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-all focus:outline-none focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
       title="Copy"
     >
       {copied ? "Copied!" : "Copy"}
@@ -61,6 +62,7 @@ export const ThreadView: React.FC = () => {
     errors,
     threads,
     sendMessage,
+    cancelAgent,
   } = useAgentStore();
   const [input, setInput] = useState("");
   const [showDiff, setShowDiff] = useState(false);
@@ -71,11 +73,35 @@ export const ThreadView: React.FC = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [previewImage, setPreviewImage] = useState<ImageAttachment | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const userIsNearBottomRef = useRef(true);
+
+  const { projects, activeProjectId } = useProjectStore();
+  const activeProject = projects.find((p) => p.id === activeProjectId);
+
+  // Slash commands definition
+  const slashCommands = [
+    { name: "code", description: "Open project in VSCode" },
+    { name: "build", description: "Run project build command" },
+    { name: "rebuild", description: "Rebuild and restart PeriCode" },
+    { name: "status", description: "Show git status" },
+    { name: "add", description: "Stage all changes (git add .)" },
+    { name: "commit", description: "Commit staged changes" },
+    { name: "push", description: "Push to remote" },
+    { name: "pull", description: "Pull from remote" },
+    { name: "checkout", description: "Switch branch" },
+    { name: "branch", description: "List branches" },
+  ];
+  const [buildOutput, setBuildOutput] = useState<{ success: boolean; output: string } | null>(null);
+  const [gitOutput, setGitOutput] = useState<{ type: string; success: boolean; message: string } | null>(null);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [branchInput, setBranchInput] = useState("");
+  const [commandSuggestions, setCommandSuggestions] = useState<typeof slashCommands>([]);
+  const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
 
   const noteContent = useNotesStore((s) => activeThreadId ? s.notes.get(activeThreadId) : undefined);
   const activeThread = threads.find((t) => t.id === activeThreadId);
@@ -146,10 +172,25 @@ export const ThreadView: React.FC = () => {
     }
   }, [threadMessages, streamingBlocks]);
 
-  // Detect $skill-name syntax in input
+  // Detect $skill-name syntax and /command syntax in input
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setInput(val);
+
+    // Detect /command at the start of input
+    const slashMatch = val.match(/^\/(\S*)$/);
+    if (slashMatch) {
+      const query = slashMatch[1].toLowerCase();
+      const matches = slashCommands.filter(
+        (c) => c.name.toLowerCase().startsWith(query)
+      );
+      setCommandSuggestions(matches);
+      setShowCommandSuggestions(matches.length > 0);
+      setShowSuggestions(false);
+      return;
+    } else {
+      setShowCommandSuggestions(false);
+    }
 
     const dollarMatch = val.match(/\$(\S*)$/);
     if (dollarMatch) {
@@ -202,13 +243,219 @@ export const ThreadView: React.FC = () => {
   const getSkillById = (id: string): Skill | undefined =>
     skills.find((s) => s.id === id);
 
+  const executeCommand = async (command: string) => {
+    switch (command) {
+      case "code": {
+        if (!activeProject?.path) return;
+        try {
+          await ipc.invoke("command:openVSCode", activeProject.path);
+        } catch {
+          // fallback: silently fail
+        }
+        break;
+      }
+      case "build": {
+        if (!activeProject?.path) return;
+        const buildCommand = activeProject.settings?.buildCommand;
+        if (!buildCommand) {
+          setBuildOutput({ success: false, output: "No build command configured. Set it in Project Settings." });
+          return;
+        }
+        setBuildOutput({ success: true, output: `Running: ${buildCommand}...` });
+        try {
+          const result = await ipc.invoke("command:build", activeProject.path, buildCommand);
+          setBuildOutput(result);
+        } catch (err) {
+          setBuildOutput({ success: false, output: `Build failed: ${err}` });
+        }
+        break;
+      }
+      case "rebuild": {
+        if (!activeProject?.path) return;
+        // Check if this is the PeriCode project
+        const isPeriCode = activeProject.name.toLowerCase() === "pericode" ||
+          activeProject.path.toLowerCase().includes("pericode");
+        if (!isPeriCode) {
+          setBuildOutput({ success: false, output: "/rebuild is only for PeriCode. Use /build for other projects." });
+          return;
+        }
+        try {
+          await ipc.invoke("command:rebuild", activeProject.path);
+        } catch {
+          // fallback: silently fail
+        }
+        break;
+      }
+      case "status": {
+        if (!activeProjectId) return;
+        setGitOutput({ type: "status", success: true, message: "Fetching git status..." });
+        try {
+          const status = await ipc.invoke("git:status", activeProjectId);
+          if (!status) {
+            setGitOutput({ type: "status", success: false, message: "Failed to get git status" });
+            return;
+          }
+          const lines: string[] = [];
+          lines.push(`Branch: ${status.current || "unknown"}`);
+          if (status.ahead > 0) lines.push(`Ahead: ${status.ahead}`);
+          if (status.behind > 0) lines.push(`Behind: ${status.behind}`);
+          if (status.staged.length > 0) lines.push(`Staged (${status.staged.length}): ${status.staged.slice(0, 5).join(", ")}${status.staged.length > 5 ? "..." : ""}`);
+          if (status.modified.length > 0) lines.push(`Modified (${status.modified.length}): ${status.modified.slice(0, 5).join(", ")}${status.modified.length > 5 ? "..." : ""}`);
+          if (status.untracked.length > 0) lines.push(`Untracked (${status.untracked.length}): ${status.untracked.slice(0, 5).join(", ")}${status.untracked.length > 5 ? "..." : ""}`);
+          if (status.staged.length === 0 && status.modified.length === 0 && status.untracked.length === 0) {
+            lines.push("Working tree clean");
+          }
+          setGitOutput({ type: "status", success: true, message: lines.join("\n") });
+        } catch (err) {
+          setGitOutput({ type: "status", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "add": {
+        if (!activeProjectId) return;
+        setGitOutput({ type: "add", success: true, message: "Staging all changes..." });
+        try {
+          const result = await ipc.invoke("git:add", activeProjectId, ["."]);
+          if (result.success) {
+            setGitOutput({ type: "add", success: true, message: "All changes staged successfully" });
+          } else {
+            setGitOutput({ type: "add", success: false, message: result.error || "Failed to stage changes" });
+          }
+        } catch (err) {
+          setGitOutput({ type: "add", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "commit": {
+        if (!activeProjectId) return;
+        // If no commit message, prompt for one
+        if (!commitMessage.trim()) {
+          setGitOutput({ type: "commit", success: false, message: "Enter a commit message below and run /commit again" });
+          return;
+        }
+        setGitOutput({ type: "commit", success: true, message: "Committing..." });
+        try {
+          const result = await ipc.invoke("git:commit", activeProjectId, commitMessage.trim());
+          if (result.success) {
+            setGitOutput({ type: "commit", success: true, message: `Committed: ${result.hash || ""}` });
+            setCommitMessage("");
+          } else {
+            setGitOutput({ type: "commit", success: false, message: result.error || "Commit failed" });
+          }
+        } catch (err) {
+          setGitOutput({ type: "commit", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "push": {
+        if (!activeProjectId) return;
+        setGitOutput({ type: "push", success: true, message: "Pushing to remote..." });
+        try {
+          const result = await ipc.invoke("git:push", activeProjectId);
+          if (result.success) {
+            setGitOutput({ type: "push", success: true, message: "Pushed successfully" });
+          } else {
+            setGitOutput({ type: "push", success: false, message: result.error || "Push failed" });
+          }
+        } catch (err) {
+          setGitOutput({ type: "push", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "pull": {
+        if (!activeProjectId) return;
+        setGitOutput({ type: "pull", success: true, message: "Pulling from remote..." });
+        try {
+          const result = await ipc.invoke("git:pull", activeProjectId);
+          if (result.success) {
+            setGitOutput({ type: "pull", success: true, message: result.summary || "Pulled successfully" });
+          } else {
+            setGitOutput({ type: "pull", success: false, message: result.error || "Pull failed" });
+          }
+        } catch (err) {
+          setGitOutput({ type: "pull", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "checkout": {
+        if (!activeProjectId) return;
+        if (!branchInput.trim()) {
+          // Show branch list first
+          setGitOutput({ type: "checkout", success: true, message: "Loading branches..." });
+          try {
+            const result = await ipc.invoke("git:branch", activeProjectId, "list");
+            if (result.success && result.branches) {
+              const branchList = result.branches.map(b => b === result.current ? `* ${b}` : `  ${b}`).join("\n");
+              setGitOutput({ type: "checkout", success: false, message: `Enter branch name to checkout:\n\n${branchList}` });
+            } else {
+              setGitOutput({ type: "checkout", success: false, message: result.error || "Failed to list branches" });
+            }
+          } catch (err) {
+            setGitOutput({ type: "checkout", success: false, message: `Error: ${err}` });
+          }
+          return;
+        }
+        setGitOutput({ type: "checkout", success: true, message: `Switching to ${branchInput}...` });
+        try {
+          const result = await ipc.invoke("git:checkout", activeProjectId, branchInput.trim());
+          if (result.success) {
+            setGitOutput({ type: "checkout", success: true, message: `Switched to branch '${branchInput.trim()}'` });
+            setBranchInput("");
+          } else {
+            setGitOutput({ type: "checkout", success: false, message: result.error || "Checkout failed" });
+          }
+        } catch (err) {
+          setGitOutput({ type: "checkout", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+      case "branch": {
+        if (!activeProjectId) return;
+        setGitOutput({ type: "branch", success: true, message: "Listing branches..." });
+        try {
+          const result = await ipc.invoke("git:branch", activeProjectId, "list");
+          if (result.success && result.branches) {
+            const branchList = result.branches.map(b => b === result.current ? `* ${b} (current)` : `  ${b}`).join("\n");
+            setGitOutput({ type: "branch", success: true, message: `Branches:\n${branchList}` });
+          } else {
+            setGitOutput({ type: "branch", success: false, message: result.error || "Failed to list branches" });
+          }
+        } catch (err) {
+          setGitOutput({ type: "branch", success: false, message: `Error: ${err}` });
+        }
+        break;
+      }
+    }
+  };
+
+  const selectCommand = (cmd: typeof slashCommands[number]) => {
+    setInput(`/${cmd.name}`);
+    setShowCommandSuggestions(false);
+    inputRef.current?.focus();
+  };
+
   const handleSend = async () => {
     if ((!input.trim() && attachedImages.length === 0) || !activeThreadId) return;
     const msg = input.trim() || (attachedImages.length > 0 ? "Analyze these images" : "");
+
+    // Intercept slash commands
+    const cmdMatch = msg.match(/^\/(\S+)$/);
+    if (cmdMatch) {
+      const cmdName = cmdMatch[1].toLowerCase();
+      const validCmd = slashCommands.find((c) => c.name === cmdName);
+      if (validCmd) {
+        setInput("");
+        setShowCommandSuggestions(false);
+        await executeCommand(cmdName);
+        return;
+      }
+    }
+
     const imagePaths = attachedImages.length > 0 ? attachedImages.map((img) => img.filePath) : undefined;
     setInput("");
     setAttachedImages([]);
     setShowSuggestions(false);
+    setShowCommandSuggestions(false);
     // Force scroll to bottom when sending
     userIsNearBottomRef.current = true;
     await sendMessage(activeThreadId, msg, imagePaths);
@@ -221,7 +468,37 @@ export const ThreadView: React.FC = () => {
     }
     if (e.key === "Escape") {
       setShowSuggestions(false);
+      setShowCommandSuggestions(false);
     }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    // Check if clipboard has image data
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.type.startsWith("image/"));
+
+    if (imageItem) {
+      e.preventDefault();
+
+      // Read the image blob directly from the clipboard in the renderer
+      const blob = imageItem.getAsFile();
+      if (!blob) return;
+
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        if (!base64Data) return;
+
+        // Send the base64 data to main process to save as temp file
+        const attachment = await ipc.invoke("image:saveFromBase64", base64Data, blob.type);
+        if (attachment) {
+          setAttachedImages((prev) => [...prev, attachment]);
+        }
+      };
+      reader.readAsDataURL(blob);
+    }
+    // If no image, let the default paste behavior handle text
   };
 
   const handlePickImages = async () => {
@@ -257,50 +534,41 @@ export const ThreadView: React.FC = () => {
       /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(f.name)
     );
 
-    const newAttachments: ImageAttachment[] = [];
     for (const file of imageFiles) {
-      const filePath = (file as unknown as { path: string }).path;
-      if (!filePath) continue;
+      // Read file content as base64 in renderer, then send to main to save
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        if (!base64Data) return;
 
-      const base64 = await ipc.invoke("image:readBase64", filePath);
-      if (base64) {
-        newAttachments.push({
-          filePath,
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-          base64Thumbnail: base64,
-        });
-      }
-    }
-
-    if (newAttachments.length > 0) {
-      setAttachedImages((prev) => [...prev, ...newAttachments]);
+        const attachment = await ipc.invoke("image:saveFromBase64", base64Data, file.type);
+        if (attachment) {
+          attachment.fileName = file.name;
+          setAttachedImages((prev) => [...prev, attachment]);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const newAttachments: ImageAttachment[] = [];
 
     for (const file of files) {
-      const filePath = (file as unknown as { path: string }).path;
-      if (!filePath) continue;
+      // Read file content as base64 in renderer, then send to main to save
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result as string;
+        if (!base64Data) return;
 
-      const base64 = await ipc.invoke("image:readBase64", filePath);
-      if (base64) {
-        newAttachments.push({
-          filePath,
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-          base64Thumbnail: base64,
-        });
-      }
-    }
-
-    if (newAttachments.length > 0) {
-      setAttachedImages((prev) => [...prev, ...newAttachments]);
+        const attachment = await ipc.invoke("image:saveFromBase64", base64Data, file.type);
+        if (attachment) {
+          // Update fileName to use the original name
+          attachment.fileName = file.name;
+          setAttachedImages((prev) => [...prev, attachment]);
+        }
+      };
+      reader.readAsDataURL(file);
     }
 
     // Reset input so the same file can be selected again
@@ -420,9 +688,12 @@ export const ThreadView: React.FC = () => {
                   {skill.name}
                   <button
                     onClick={() => detachSkill(skillId)}
-                    className="text-primary/60 hover:text-primary"
+                    className="text-primary/60 hover:text-primary rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    x
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
                   </button>
                 </span>
               );
@@ -433,14 +704,14 @@ export const ThreadView: React.FC = () => {
         {activeThread.worktreePath && (
           <button
             onClick={() => setShowDiff(true)}
-            className="flex-shrink-0 px-2 py-0.5 rounded border border-border text-xs text-foreground hover:bg-accent transition-colors"
+            className="flex-shrink-0 px-2.5 py-1 rounded-md border border-border text-xs font-medium text-foreground hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Diff
           </button>
         )}
         <button
           onClick={() => setShowNotes((v) => !v)}
-          className={`flex-shrink-0 px-2 py-0.5 rounded border text-xs transition-colors ${
+          className={`flex-shrink-0 px-2.5 py-1 rounded-md border text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
             showNotes
               ? "border-primary/50 bg-primary/10 text-primary"
               : "border-border text-foreground hover:bg-accent"
@@ -468,7 +739,7 @@ export const ThreadView: React.FC = () => {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
+        className="flex-1 overflow-y-auto p-2 md:p-4 space-y-3 md:space-y-4"
       >
         {threadMessages.map((msg, msgIdx) => (
           <div
@@ -477,7 +748,7 @@ export const ThreadView: React.FC = () => {
             style={{ animationDelay: `${Math.min(msgIdx * 30, 300)}ms` }}
           >
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-3 ${
+              className={`max-w-[95%] sm:max-w-[85%] md:max-w-[80%] lg:max-w-[75%] rounded-lg px-3 md:px-4 py-2 md:py-3 ${
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-foreground"
@@ -498,7 +769,7 @@ export const ThreadView: React.FC = () => {
               {msg.content.map((block: MessageContent, i: number) =>
                 renderContentBlock(block, i)
               )}
-              <div className="flex items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
                 {/* Timestamp */}
                 <span
                   className="text-[10px] opacity-50 cursor-default"
@@ -506,14 +777,14 @@ export const ThreadView: React.FC = () => {
                 >
                   {relativeTime(msg.createdAt)}
                 </span>
-                {/* Cost info */}
-                {(msg.costUsd !== null || msg.tokensIn !== null || msg.tokensOut !== null) && (
-                  <span className="text-[10px] opacity-50 font-mono">
+                {/* Cost info for assistant messages */}
+                {msg.role === "assistant" && (msg.costUsd !== null || msg.tokensIn !== null || msg.tokensOut !== null) && (
+                  <span className="text-[10px] opacity-60 font-mono bg-black/10 px-1.5 py-0.5 rounded">
                     {msg.tokensIn !== null && msg.tokensOut !== null && (
-                      <span>{msg.tokensIn.toLocaleString()}in / {msg.tokensOut.toLocaleString()}out</span>
+                      <span className="text-blue-300">{formatTokens(msg.tokensIn)}in / {formatTokens(msg.tokensOut)}out</span>
                     )}
-                    {msg.costUsd !== null && (
-                      <span>{msg.tokensIn !== null ? " · " : ""}${msg.costUsd.toFixed(4)}</span>
+                    {msg.costUsd !== null && msg.costUsd > 0 && (
+                      <span className="text-green-300">{msg.tokensIn !== null ? " · " : ""}{formatCost(msg.costUsd)}</span>
                     )}
                   </span>
                 )}
@@ -525,7 +796,7 @@ export const ThreadView: React.FC = () => {
         {/* Streaming content blocks */}
         {streamingBlocks.length > 0 && (
           <div className="flex justify-start animate-fade-in">
-            <div className="max-w-[80%] rounded-lg px-4 py-3 bg-muted text-foreground">
+            <div className="max-w-[95%] sm:max-w-[85%] md:max-w-[80%] lg:max-w-[75%] rounded-lg px-3 md:px-4 py-2 md:py-3 bg-muted text-foreground">
               {streamingBlocks.map((block, i) =>
                 renderStreamingBlock(block, i, i === streamingBlocks.length - 1)
               )}
@@ -543,6 +814,112 @@ export const ThreadView: React.FC = () => {
             <p className="text-sm text-red-300/80 mt-1 whitespace-pre-wrap font-mono">
               {threadError}
             </p>
+          </div>
+        )}
+
+        {/* Build output */}
+        {buildOutput && (
+          <div className={`rounded-lg border px-4 py-3 animate-fade-in-up ${
+            buildOutput.success
+              ? "border-green-500/30 bg-green-500/10"
+              : "border-red-500/30 bg-red-500/10"
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className={`text-sm font-medium ${buildOutput.success ? "text-green-400" : "text-red-400"}`}>
+                {buildOutput.success ? "Build Output" : "Build Failed"}
+              </p>
+              <button
+                onClick={() => setBuildOutput(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+            <pre className={`text-xs whitespace-pre-wrap font-mono max-h-48 overflow-auto ${
+              buildOutput.success ? "text-green-300/80" : "text-red-300/80"
+            }`}>
+              {buildOutput.output}
+            </pre>
+          </div>
+        )}
+
+        {/* Git command output */}
+        {gitOutput && (
+          <div className={`rounded-lg border px-4 py-3 animate-fade-in-up ${
+            gitOutput.success
+              ? "border-cyan-500/30 bg-cyan-500/10"
+              : "border-red-500/30 bg-red-500/10"
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className={`text-sm font-medium flex items-center gap-2 ${gitOutput.success ? "text-cyan-400" : "text-red-400"}`}>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="6" y1="3" x2="6" y2="15" />
+                  <circle cx="18" cy="6" r="3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <path d="M18 9a9 9 0 0 1-9 9" />
+                </svg>
+                git {gitOutput.type}
+              </p>
+              <button
+                onClick={() => setGitOutput(null)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+            <pre className={`text-xs whitespace-pre-wrap font-mono max-h-48 overflow-auto ${
+              gitOutput.success ? "text-cyan-300/80" : "text-red-300/80"
+            }`}>
+              {gitOutput.message}
+            </pre>
+            {/* Commit message input */}
+            {gitOutput.type === "commit" && !gitOutput.success && gitOutput.message.includes("Enter a commit message") && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="text"
+                  value={commitMessage}
+                  onChange={(e) => setCommitMessage(e.target.value)}
+                  placeholder="Commit message..."
+                  className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && commitMessage.trim()) {
+                      executeCommand("commit");
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => executeCommand("commit")}
+                  disabled={!commitMessage.trim()}
+                  className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Commit
+                </button>
+              </div>
+            )}
+            {/* Branch checkout input */}
+            {gitOutput.type === "checkout" && !gitOutput.success && gitOutput.message.includes("Enter branch name") && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="text"
+                  value={branchInput}
+                  onChange={(e) => setBranchInput(e.target.value)}
+                  placeholder="Branch name..."
+                  className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && branchInput.trim()) {
+                      executeCommand("checkout");
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => executeCommand("checkout")}
+                  disabled={!branchInput.trim()}
+                  className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Checkout
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -635,6 +1012,24 @@ export const ThreadView: React.FC = () => {
           </div>
         )}
 
+        {/* Command suggestions popup */}
+        {showCommandSuggestions && (
+          <div className="absolute bottom-full left-4 right-4 mb-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-auto animate-scale-in">
+            {commandSuggestions.map((cmd) => (
+              <button
+                key={cmd.name}
+                onClick={() => selectCommand(cmd)}
+                className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors flex items-center gap-2"
+              >
+                <span className="font-mono font-medium text-primary">/{cmd.name}</span>
+                <span className="text-xs text-muted-foreground truncate">
+                  {cmd.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Skill suggestions popup */}
         {showSuggestions && (
           <div className="absolute bottom-full left-4 right-4 mb-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-auto animate-scale-in">
@@ -655,34 +1050,57 @@ export const ThreadView: React.FC = () => {
 
         {/* Attached images preview */}
         {attachedImages.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2 animate-fade-in">
-            {attachedImages.map((img, i) => (
-              <div
-                key={`${img.filePath}-${i}`}
-                className="group relative rounded-md border border-border overflow-hidden bg-card"
+          <div className="mb-3 p-2 bg-muted/30 rounded-lg border border-border animate-fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                {attachedImages.length} image{attachedImages.length > 1 ? "s" : ""} attached
+              </span>
+              <button
+                onClick={() => setAttachedImages([])}
+                className="text-[10px] text-red-400 hover:text-red-300 transition-colors"
               >
-                <img
-                  src={img.base64Thumbnail}
-                  alt={img.fileName}
-                  className="w-16 h-16 object-cover"
-                />
-                <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5">
-                  <span className="text-[8px] text-white truncate block" title={img.fileName}>
-                    {img.fileName}
-                  </span>
-                  <span className="text-[7px] text-white/60">
-                    {formatFileSize(img.sizeBytes)}
-                  </span>
-                </div>
-                <button
-                  onClick={() => removeAttachedImage(i)}
-                  className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Remove"
+                Clear all
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {attachedImages.map((img, i) => (
+                <div
+                  key={`${img.filePath}-${i}`}
+                  className="group relative rounded-lg border border-border overflow-hidden bg-card shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => setPreviewImage(img)}
+                  title={img.filePath}
                 >
-                  x
-                </button>
-              </div>
-            ))}
+                  <img
+                    src={img.base64Thumbnail}
+                    alt={img.fileName}
+                    className="w-24 h-24 object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-medium transition-opacity">
+                      Preview
+                    </span>
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
+                    <span className="text-[10px] text-white truncate block font-medium" title={img.fileName}>
+                      {img.fileName}
+                    </span>
+                    <span className="text-[9px] text-white/70">
+                      {formatFileSize(img.sizeBytes)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeAttachedImage(i);
+                    }}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500/90 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                    title="Remove"
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -712,17 +1130,27 @@ export const ThreadView: React.FC = () => {
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={attachedImages.length > 0 ? "Describe the images..." : "Send a message... (type $ for skills)"}
+            onPaste={handlePaste}
+            placeholder={attachedImages.length > 0 ? "Describe the images..." : "Send a message... (/ for commands, $ for skills, Ctrl+V to paste image)"}
             rows={1}
             className="flex-1 resize-none rounded-lg border border-input bg-background px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow"
           />
-          <button
-            onClick={handleSend}
-            disabled={(!input.trim() && attachedImages.length === 0) || activeThread.status === "running"}
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Send
-          </button>
+          {activeThread?.status === "running" ? (
+            <button
+              onClick={() => activeThreadId && cancelAgent(activeThreadId)}
+              className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() && attachedImages.length === 0}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
 
@@ -731,6 +1159,45 @@ export const ThreadView: React.FC = () => {
           thread={activeThread}
           onClose={() => setShowDiff(false)}
         />
+      )}
+
+      {/* Image preview modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center animate-fade-in"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewImage.base64Thumbnail}
+              alt={previewImage.fileName}
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4 rounded-b-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white font-medium">{previewImage.fileName}</p>
+                  <p className="text-white/70 text-sm">{formatFileSize(previewImage.sizeBytes)}</p>
+                </div>
+                <button
+                  onClick={() => setPreviewImage(null)}
+                  className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-colors"
+            >
+              x
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

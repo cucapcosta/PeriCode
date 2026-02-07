@@ -242,13 +242,13 @@ export const CommandBar: React.FC<CommandBarProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] sm:pt-[15vh]">
       <div
         className="absolute inset-0 bg-background/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden">
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-[calc(100%-1rem)] sm:max-w-md md:max-w-xl mx-2 sm:mx-4 overflow-hidden">
         {/* Search input */}
         <div className="flex items-center px-4 py-3 border-b border-border">
           <span className="text-muted-foreground mr-2">/</span>

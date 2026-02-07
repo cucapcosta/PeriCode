@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import {
   parseSkillMd,
@@ -9,6 +10,7 @@ import {
 } from "./skill-parser";
 import { getSkillsPath } from "../utils/paths";
 import { logger } from "../utils/logger";
+import { simpleGit } from "simple-git";
 import type { Skill, SkillDetail, SkillDefinition } from "../../src/types/ipc";
 
 // Path to built-in skills shipped with the app
@@ -225,6 +227,119 @@ class SkillsEngine {
    */
   async delete(id: string): Promise<void> {
     storage.deleteSkill(id);
+  }
+
+  /**
+   * Import skills from a Git repository URL.
+   * Clones the repo and recursively finds all SKILL.md files.
+   */
+  async importFromGit(gitUrl: string): Promise<Skill[]> {
+    const skillsBase = getSkillsPath();
+
+    // Ensure skills directory exists
+    if (!fs.existsSync(skillsBase)) {
+      fs.mkdirSync(skillsBase, { recursive: true });
+    }
+
+    // Extract repo name from URL for the directory name
+    const repoName = gitUrl
+      .replace(/\.git$/, "")
+      .split("/")
+      .pop()
+      ?.replace(/[^a-zA-Z0-9-_]/g, "-") || `skill-${Date.now()}`;
+
+    const targetDir = path.join(skillsBase, repoName);
+
+    // Check if directory already exists
+    if (fs.existsSync(targetDir)) {
+      // Try to pull latest changes instead
+      logger.info("skills-engine", `Directory ${targetDir} exists, pulling latest changes`);
+      const git = simpleGit(targetDir);
+      await git.pull();
+    } else {
+      // Clone the repository
+      logger.info("skills-engine", `Cloning ${gitUrl} to ${targetDir}`);
+      const git = simpleGit();
+      await git.clone(gitUrl, targetDir);
+    }
+
+    // Recursively find all SKILL.md files
+    const skillFiles = this.findSkillFilesRecursive(targetDir);
+    logger.info("skills-engine", `Found ${skillFiles.length} SKILL.md files`);
+
+    const importedSkills: Skill[] = [];
+
+    for (const skillFilePath of skillFiles) {
+      const parsed = loadSkillFile(skillFilePath);
+      if (parsed) {
+        // The skill directory is the parent of SKILL.md
+        const skillDir = path.dirname(skillFilePath);
+
+        // Check if this skill already exists (by path)
+        const existingSkills = storage.listSkills();
+        const alreadyExists = existingSkills.some(s => s.path === skillDir);
+
+        if (!alreadyExists) {
+          const id = crypto.randomUUID();
+          const skill = storage.addSkill(
+            id,
+            parsed.name,
+            parsed.description,
+            "user",
+            skillDir
+          );
+          importedSkills.push(skill);
+          logger.info("skills-engine", `Imported skill: ${parsed.name}`);
+        } else {
+          logger.info("skills-engine", `Skill already exists: ${parsed.name}`);
+        }
+      }
+    }
+
+    if (importedSkills.length === 0 && skillFiles.length === 0) {
+      throw new Error("No SKILL.md files found in repository.");
+    }
+
+    if (importedSkills.length === 0) {
+      throw new Error("All skills from this repository are already imported.");
+    }
+
+    return importedSkills;
+  }
+
+  /**
+   * Recursively find all SKILL.md files in a directory.
+   */
+  private findSkillFilesRecursive(dir: string): string[] {
+    const results: string[] = [];
+
+    const scan = (currentDir: string) => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+
+        if (entry.isDirectory()) {
+          // Skip hidden directories and common non-skill directories
+          if (entry.name.startsWith(".") ||
+              entry.name === "node_modules" ||
+              entry.name === "__pycache__") {
+            continue;
+          }
+          scan(fullPath);
+        } else if (entry.isFile() && entry.name === "SKILL.md") {
+          results.push(fullPath);
+        }
+      }
+    };
+
+    scan(dir);
+    return results;
   }
 }
 

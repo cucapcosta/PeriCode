@@ -17,6 +17,12 @@ interface ThreadCostState {
   modelUsage: Record<string, ModelTokenUsage>;
 }
 
+interface PendingMessageCost {
+  costUsd: number;
+  tokensIn: number;
+  tokensOut: number;
+}
+
 interface AgentState {
   threads: ThreadInfo[];
   activeThreadId: string | null;
@@ -39,6 +45,9 @@ interface AgentState {
 
   errors: Map<string, string>;
 }
+
+// Track pending cost info for the current streaming response
+const pendingMessageCosts = new Map<string, PendingMessageCost>();
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   threads: [],
@@ -226,9 +235,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         totalTokensOut: 0,
         modelUsage: {},
       };
-      current.totalCostUsd += message.costUsd ?? 0;
-      current.totalTokensIn += message.tokensIn ?? 0;
-      current.totalTokensOut += message.tokensOut ?? 0;
+      const costUsd = message.costUsd ?? 0;
+      const tokensIn = message.tokensIn ?? 0;
+      const tokensOut = message.tokensOut ?? 0;
+
+      current.totalCostUsd += costUsd;
+      current.totalTokensIn += tokensIn;
+      current.totalTokensOut += tokensOut;
       if (message.modelUsage) {
         for (const [model, usage] of Object.entries(message.modelUsage)) {
           const existing = current.modelUsage[model];
@@ -245,6 +258,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
       costs.set(threadId, { ...current });
       set({ threadCosts: costs });
+
+      // Store the cost info for the pending message
+      pendingMessageCosts.set(threadId, { costUsd, tokensIn, tokensOut });
     }
 
     if (message.type === "status" && (message.status === "completed" || message.status === "failed")) {
@@ -274,14 +290,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         if (content.length > 0) {
           const msgs = new Map(get().messages);
           const existing = msgs.get(threadId) || [];
+          // Get the pending cost info for this message
+          const pendingCost = pendingMessageCosts.get(threadId);
           const finalMsg: Message = {
             id: crypto.randomUUID(),
             threadId,
             role: "assistant",
             content,
-            costUsd: null,
-            tokensIn: null,
-            tokensOut: null,
+            costUsd: pendingCost?.costUsd ?? null,
+            tokensIn: pendingCost?.tokensIn ?? null,
+            tokensOut: pendingCost?.tokensOut ?? null,
             createdAt: new Date().toISOString(),
           };
           msgs.set(threadId, [...existing, finalMsg]);
@@ -289,6 +307,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         }
       }
       streaming.delete(threadId);
+      // Clean up pending cost info
+      pendingMessageCosts.delete(threadId);
       set({ streamingContent: streaming });
     }
   },

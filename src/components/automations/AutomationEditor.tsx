@@ -198,8 +198,8 @@ export const AutomationEditor: React.FC<AutomationEditorProps> = ({
         onClick={onClose}
       />
 
-      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-[calc(100%-1rem)] sm:max-w-xl md:max-w-2xl lg:max-w-3xl mx-2 sm:mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">
             {editingAutomation ? "Edit Automation" : "New Automation"}
           </h2>
@@ -211,7 +211,7 @@ export const AutomationEditor: React.FC<AutomationEditorProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-6 space-y-4">
+        <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-4">
           {error && (
             <div className="px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-sm">
               {error}

@@ -50,4 +50,11 @@ export function registerSkillHandlers(): void {
       throw new Error("Skill import not yet implemented");
     }
   );
+
+  ipcMain.handle(
+    "skill:importFromGit",
+    async (_event, gitUrl: string): Promise<Skill[]> => {
+      return skillsEngine.importFromGit(gitUrl);
+    }
+  );
 }

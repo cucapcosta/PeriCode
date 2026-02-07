@@ -329,6 +329,7 @@ function processAssistantEvent(
   state: { lastSeenTextLength: number; currentBlockIndex: number; seenToolUseIds: Set<string> }
 ): void {
   // Handle content_block partials (from --include-partial-messages)
+  // This is used for streaming text incrementally
   if (message.content_block) {
     if (message.content_block.type === "text" && message.content_block.text) {
       const fullText = message.content_block.text;
@@ -343,7 +344,28 @@ function processAssistantEvent(
         } as StreamMessage);
       }
     }
-    return;
+    // Also check for tool_use in content_block
+    if (message.content_block.type === "tool_use") {
+      const toolBlock = message.content_block as unknown as { type: string; id?: string; name?: string; input?: Record<string, unknown> };
+      if (toolBlock.name) {
+        const dedupeKey = toolBlock.id ?? `${toolBlock.name}-${JSON.stringify(toolBlock.input)}`;
+        if (!state.seenToolUseIds.has(dedupeKey)) {
+          state.seenToolUseIds.add(dedupeKey);
+          state.currentBlockIndex++;
+          state.lastSeenTextLength = 0;
+
+          sendToRenderer("agent:message", threadId, {
+            type: "tool_use",
+            toolName: toolBlock.name,
+            toolInput: toolBlock.input ?? {},
+            blockIndex: state.currentBlockIndex,
+          } as StreamMessage);
+
+          state.currentBlockIndex++;
+        }
+      }
+    }
+    // Don't return early - also need to check message.content below
   }
 
   // Handle full message.content snapshots

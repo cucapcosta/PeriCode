@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ipc } from "@/lib/ipc-client";
+import { MODELS, getLatestModels, formatContextWindow, type ModelDefinition } from "@/lib/models";
 import type { AppSettings } from "@/types/ipc";
 
 interface SettingsPanelProps {
@@ -66,10 +67,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-[calc(100%-1rem)] sm:max-w-xl md:max-w-2xl mx-2 sm:mx-4 max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground">Settings</h2>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-border">
+          <h2 className="text-base sm:text-lg font-semibold text-foreground">Settings</h2>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground text-lg"
@@ -79,12 +80,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-b border-border px-6">
+        <div className="flex border-b border-border px-2 sm:px-6 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -96,7 +97,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto px-6 py-4">
+        <div className="flex-1 overflow-auto px-4 sm:px-6 py-4">
           {!settings ? (
             <div className="text-center text-muted-foreground py-8">Loading...</div>
           ) : (
@@ -104,27 +105,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
               {activeTab === "general" && (
                 <div className="space-y-6">
                   <SettingGroup label="Theme">
-                    <select
+                    <ThemeSelector
                       value={settings.theme}
-                      onChange={(e) => saveSettings({ theme: e.target.value as AppSettings["theme"] })}
-                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
-                    >
-                      <option value="dark">Dark</option>
-                      <option value="light">Light</option>
-                      <option value="system">System</option>
-                    </select>
+                      onChange={(theme) => {
+                        saveSettings({ theme });
+                        // Apply theme immediately
+                        const root = document.documentElement;
+                        if (theme === "system") {
+                          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+                          root.classList.toggle("dark", prefersDark);
+                        } else {
+                          root.classList.toggle("dark", theme === "dark");
+                        }
+                      }}
+                    />
                   </SettingGroup>
 
                   <SettingGroup label="Default Model">
-                    <select
+                    <ModelSelector
                       value={settings.defaultModel}
-                      onChange={(e) => saveSettings({ defaultModel: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
-                    >
-                      <option value="haiku">Haiku (fast)</option>
-                      <option value="sonnet">Sonnet (balanced)</option>
-                      <option value="opus">Opus (powerful)</option>
-                    </select>
+                      onChange={(v) => saveSettings({ defaultModel: v })}
+                    />
                   </SettingGroup>
 
                   <SettingGroup label="Claude CLI Status">
@@ -415,3 +416,139 @@ const ToggleSwitch: React.FC<{
     />
   </button>
 );
+
+const ModelSelector: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  showAllVersions?: boolean;
+}> = ({ value, onChange, showAllVersions = false }) => {
+  const [expanded, setExpanded] = useState(false);
+  const models = showAllVersions ? MODELS : getLatestModels();
+  const selected = models.find((m) => m.alias === value) ?? models[0];
+
+  const familyColor = (family: ModelDefinition["family"]) => {
+    switch (family) {
+      case "opus": return "bg-purple-500/20 text-purple-400 border-purple-500/30";
+      case "sonnet": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+      case "haiku": return "bg-green-500/20 text-green-400 border-green-500/30";
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-left flex items-center gap-3 hover:bg-accent/50 transition-colors"
+      >
+        <span className={`px-2 py-0.5 rounded text-xs font-medium border ${familyColor(selected.family)}`}>
+          {selected.family.toUpperCase()}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">{selected.name}</div>
+          <div className="text-xs text-muted-foreground truncate">{selected.description}</div>
+        </div>
+        <span className="text-muted-foreground text-xs">{expanded ? "▲" : "▼"}</span>
+      </button>
+
+      {expanded && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg z-10 overflow-hidden">
+          {models.map((model) => (
+            <button
+              key={model.id}
+              type="button"
+              onClick={() => {
+                onChange(model.alias);
+                setExpanded(false);
+              }}
+              className={`w-full px-3 py-2.5 text-left flex items-center gap-3 hover:bg-accent transition-colors ${
+                model.alias === value ? "bg-accent/50" : ""
+              }`}
+            >
+              <span className={`px-2 py-0.5 rounded text-xs font-medium border ${familyColor(model.family)}`}>
+                {model.family.toUpperCase()}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">{model.name}</span>
+                  {model.isLatest && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-primary/20 text-primary font-medium">
+                      LATEST
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">{model.description}</div>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                <div>{formatContextWindow(model.contextWindow)} ctx</div>
+                <div>${model.inputPricePerMTok}/${model.outputPricePerMTok}</div>
+              </div>
+            </button>
+          ))}
+          {!showAllVersions && MODELS.length > getLatestModels().length && (
+            <div className="px-3 py-2 border-t border-border">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Could toggle to show all versions
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                + {MODELS.length - getLatestModels().length} older versions available
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ThemeSelector: React.FC<{
+  value: AppSettings["theme"];
+  onChange: (value: AppSettings["theme"]) => void;
+}> = ({ value, onChange }) => {
+  const themes: Array<{ key: AppSettings["theme"]; label: string; icon: string; description: string }> = [
+    { key: "light", label: "Light", icon: "sun", description: "Pastel blue light theme" },
+    { key: "dark", label: "Dark", icon: "moon", description: "Deep navy dark theme" },
+    { key: "system", label: "System", icon: "auto", description: "Follow OS preference" },
+  ];
+
+  return (
+    <div className="flex gap-2">
+      {themes.map((theme) => (
+        <button
+          key={theme.key}
+          type="button"
+          onClick={() => onChange(theme.key)}
+          className={`flex-1 px-3 py-3 rounded-lg border text-center transition-colors ${
+            value === theme.key
+              ? "border-primary bg-primary/10 text-foreground"
+              : "border-border bg-background text-muted-foreground hover:text-foreground hover:bg-accent"
+          }`}
+        >
+          <div className="text-lg mb-1">
+            {theme.icon === "sun" && (
+              <svg className="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            )}
+            {theme.icon === "moon" && (
+              <svg className="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+            {theme.icon === "auto" && (
+              <svg className="w-5 h-5 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            )}
+          </div>
+          <div className="text-sm font-medium">{theme.label}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">{theme.description}</div>
+        </button>
+      ))}
+    </div>
+  );
+};

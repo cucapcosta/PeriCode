@@ -1,44 +1,37 @@
 import React, { useState } from "react";
 import { ipc } from "@/lib/ipc-client";
 import type { Skill } from "@/types/ipc";
+import { Button } from "@/components/ui/Button";
+
+const GitIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 2v20M2 12h20" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
 
 interface SkillInstallerProps {
   open: boolean;
   onClose: () => void;
-  onInstalled?: (skill: Skill) => void;
+  onInstalled?: (skills: Skill[]) => void;
 }
-
-type ImportMode = "file" | "git";
 
 export const SkillInstaller: React.FC<SkillInstallerProps> = ({
   open,
   onClose,
   onInstalled,
 }) => {
-  const [mode, setMode] = useState<ImportMode>("file");
-  const [filePath, setFilePath] = useState("");
   const [gitUrl, setGitUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const handleImportFile = async () => {
-    if (!filePath.trim()) return;
-
-    setImporting(true);
-    setError(null);
-
-    try {
-      const skill = await ipc.invoke("skill:import", filePath.trim());
-      onInstalled?.(skill);
-      onClose();
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to import skill";
-      setError(message);
-    } finally {
-      setImporting(false);
-    }
-  };
 
   const handleImportGit = async () => {
     if (!gitUrl.trim()) return;
@@ -47,14 +40,13 @@ export const SkillInstaller: React.FC<SkillInstallerProps> = ({
     setError(null);
 
     try {
-      // Git import is handled via the same import endpoint
-      // The backend will detect the URL and clone the repo
-      const skill = await ipc.invoke("skill:import", gitUrl.trim());
-      onInstalled?.(skill);
+      const skills = await ipc.invoke("skill:importFromGit", gitUrl.trim());
+      onInstalled?.(skills);
+      setGitUrl("");
       onClose();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to import skill from git";
+        err instanceof Error ? err.message : "Failed to import skills from git";
       setError(message);
     } finally {
       setImporting(false);
@@ -67,94 +59,77 @@ export const SkillInstaller: React.FC<SkillInstallerProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={() => !importing && onClose()}
       />
 
-      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-lg mx-4 p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4">
-          Install Skill
-        </h2>
-
-        {/* Mode tabs */}
-        <div className="flex rounded-lg border border-border overflow-hidden mb-4">
+      <div className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary">
+              <GitIcon />
+            </div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Import from Git
+            </h2>
+          </div>
           <button
-            onClick={() => setMode("file")}
-            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-              mode === "file"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
+            onClick={() => !importing && onClose()}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            disabled={importing}
           >
-            From File (.zip)
-          </button>
-          <button
-            onClick={() => setMode("git")}
-            className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
-              mode === "git"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            From Git URL
+            <CloseIcon />
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-sm">
-            {error}
-          </div>
-        )}
+        {/* Content */}
+        <div className="p-6">
+          {error && (
+            <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              {error}
+            </div>
+          )}
 
-        {mode === "file" ? (
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Archive Path
-            </label>
-            <input
-              type="text"
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-              placeholder="/path/to/skill.zip"
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring mb-2"
-            />
-            <p className="text-xs text-muted-foreground mb-4">
-              Import a skill from a .zip archive containing a SKILL.md file.
-            </p>
-          </div>
-        ) : (
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Git Repository URL
             </label>
             <input
               type="text"
               value={gitUrl}
               onChange={(e) => setGitUrl(e.target.value)}
-              placeholder="https://github.com/user/skill-repo.git"
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring mb-2"
+              placeholder="https://github.com/anthropics/skills.git"
+              className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-shadow"
+              disabled={importing}
+              onKeyDown={(e) => e.key === "Enter" && handleImportGit()}
             />
-            <p className="text-xs text-muted-foreground mb-4">
-              Clone a skill from a git repository containing a SKILL.md file.
+            <p className="text-xs text-muted-foreground mt-2">
+              Clone a git repository and import all SKILL.md files found recursively.
             </p>
           </div>
-        )}
+        </div>
 
-        <div className="flex justify-end gap-3">
-          <button
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30">
+          <Button
+            variant="outline"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
+            disabled={importing}
           >
             Cancel
-          </button>
-          <button
-            onClick={mode === "file" ? handleImportFile : handleImportGit}
-            disabled={
-              importing || (mode === "file" ? !filePath.trim() : !gitUrl.trim())
-            }
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          </Button>
+          <Button
+            onClick={handleImportGit}
+            disabled={importing || !gitUrl.trim()}
+            loading={importing}
           >
-            {importing ? "Importing..." : "Import Skill"}
-          </button>
+            Import Skills
+          </Button>
         </div>
       </div>
     </div>

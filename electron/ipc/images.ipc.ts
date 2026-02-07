@@ -1,6 +1,7 @@
-import { ipcMain, dialog } from "electron";
+import { ipcMain, dialog, clipboard, nativeImage } from "electron";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 
 const ALLOWED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"];
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -101,6 +102,80 @@ export function registerImageHandlers(): void {
         return stat.isFile() && stat.size <= MAX_IMAGE_SIZE;
       } catch {
         return false;
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "image:saveFromClipboard",
+    async (): Promise<ImageAttachment | null> => {
+      try {
+        const image = clipboard.readImage();
+        if (image.isEmpty()) return null;
+
+        const pngBuffer = image.toPNG();
+        if (pngBuffer.length === 0 || pngBuffer.length > MAX_IMAGE_SIZE) return null;
+
+        // Save to temp directory
+        const tempDir = os.tmpdir();
+        const fileName = `clipboard-${Date.now()}.png`;
+        const filePath = path.join(tempDir, fileName);
+        fs.writeFileSync(filePath, pngBuffer);
+
+        const base64 = pngBuffer.toString("base64");
+        return {
+          filePath,
+          fileName,
+          mimeType: "image/png",
+          sizeBytes: pngBuffer.length,
+          base64Thumbnail: `data:image/png;base64,${base64}`,
+        };
+      } catch {
+        return null;
+      }
+    }
+  );
+
+  // Save image from base64 data URL (used when pasting from renderer clipboard)
+  ipcMain.handle(
+    "image:saveFromBase64",
+    async (_event, dataUrl: string, mimeType: string): Promise<ImageAttachment | null> => {
+      try {
+        // Extract base64 data from data URL
+        const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) return null;
+
+        const actualMimeType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+
+        if (buffer.length === 0 || buffer.length > MAX_IMAGE_SIZE) return null;
+
+        // Determine file extension from mime type
+        const extMap: Record<string, string> = {
+          "image/png": ".png",
+          "image/jpeg": ".jpg",
+          "image/gif": ".gif",
+          "image/webp": ".webp",
+          "image/bmp": ".bmp",
+        };
+        const ext = extMap[actualMimeType] || extMap[mimeType] || ".png";
+
+        // Save to temp directory
+        const tempDir = os.tmpdir();
+        const fileName = `clipboard-${Date.now()}${ext}`;
+        const filePath = path.join(tempDir, fileName);
+        fs.writeFileSync(filePath, buffer);
+
+        return {
+          filePath,
+          fileName,
+          mimeType: actualMimeType || mimeType,
+          sizeBytes: buffer.length,
+          base64Thumbnail: dataUrl,
+        };
+      } catch {
+        return null;
       }
     }
   );

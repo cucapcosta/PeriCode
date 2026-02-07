@@ -21,9 +21,20 @@ const EmbeddedTerminal = React.lazy(() =>
 import { useProjectStore } from "./stores/projectStore";
 import { useAgentStore, initAgentListeners } from "./stores/agentStore";
 import { ipc } from "./lib/ipc-client";
-import type { Skill, Automation } from "./types/ipc";
+import type { Skill, Automation, AppSettings } from "./types/ipc";
 
 type MainView = "thread" | "dashboard" | "split" | "skills" | "inbox" | "automations" | "terminal";
+
+// Apply theme to document
+function applyTheme(theme: AppSettings["theme"]) {
+  const root = document.documentElement;
+  if (theme === "system") {
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.classList.toggle("dark", prefersDark);
+  } else {
+    root.classList.toggle("dark", theme === "dark");
+  }
+}
 
 export const App: React.FC = () => {
   const [showNewAgent, setShowNewAgent] = useState(false);
@@ -39,8 +50,30 @@ export const App: React.FC = () => {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<AppSettings["theme"]>("dark");
   const { activeProjectId, projects } = useProjectStore();
   const { threads, activeThreadId, setActiveThread, cancelAgent } = useAgentStore();
+
+  // Load and apply theme on mount
+  useEffect(() => {
+    ipc.invoke("settings:get").then((settings) => {
+      setCurrentTheme(settings.theme);
+      applyTheme(settings.theme);
+    }).catch(() => {
+      // Default to dark
+      applyTheme("dark");
+    });
+
+    // Listen for system theme changes
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => {
+      if (currentTheme === "system") {
+        applyTheme("system");
+      }
+    };
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [currentTheme]);
 
   // Register IPC listeners once so status updates always reach the store
   useEffect(() => {
@@ -146,33 +179,42 @@ export const App: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-background">
       <div className="flex flex-1 min-h-0">
       {sidebarVisible && <Sidebar />}
 
       <div className="flex-1 flex flex-col min-h-0">
         {/* Top bar */}
         {activeProjectId && (
-          <div className="flex items-center gap-1.5 px-2 py-1 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-1 md:gap-1.5 px-1.5 md:px-2 py-1 border-b border-border flex-shrink-0 overflow-x-auto">
+            <button
+              onClick={() => setSidebarVisible(!sidebarVisible)}
+              className="flex-shrink-0 px-1.5 md:px-2 py-1 rounded border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent md:hidden"
+              title="Toggle sidebar"
+            >
+              {sidebarVisible ? "<<" : ">>"}
+            </button>
             <button
               onClick={() => setShowProjectSettings(true)}
-              className="flex-shrink-0 px-2.5 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+              className="flex-shrink-0 px-1.5 md:px-2.5 py-1 rounded border border-border text-[10px] md:text-xs text-foreground hover:bg-accent"
             >
-              Project
+              <span className="hidden sm:inline">Project</span>
+              <span className="sm:hidden">Proj</span>
             </button>
             <button
               onClick={() => setShowAppSettings(true)}
-              className="flex-shrink-0 px-2.5 py-1 rounded border border-border text-xs text-foreground hover:bg-accent"
+              className="flex-shrink-0 px-1.5 md:px-2.5 py-1 rounded border border-border text-[10px] md:text-xs text-foreground hover:bg-accent"
               title="Ctrl+,"
             >
-              Settings
+              <span className="hidden sm:inline">Settings</span>
+              <span className="sm:hidden">Set</span>
             </button>
-            <div className="flex rounded border border-border overflow-hidden">
+            <div className="flex rounded border border-border overflow-hidden flex-shrink-0">
               {viewButtons.map((btn, i) => (
                 <button
                   key={btn.key}
                   onClick={() => setMainView(btn.key)}
-                  className={`px-2 py-1 text-[11px] font-medium transition-colors ${
+                  className={`px-1.5 md:px-2 py-1 text-[10px] md:text-[11px] font-medium transition-colors ${
                     mainView === btn.key
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -314,7 +356,7 @@ export const App: React.FC = () => {
       </div>
       </div>
 
-      <StatusBar activeThreadId={activeThreadId} onNotificationsClick={() => setShowNotifications(true)} />
+      <StatusBar activeThreadId={activeThreadId} activeProjectId={activeProjectId} onNotificationsClick={() => setShowNotifications(true)} />
 
       <NewAgentDialog
         open={showNewAgent}

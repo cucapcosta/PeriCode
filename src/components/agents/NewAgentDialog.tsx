@@ -2,7 +2,16 @@ import React, { useState, useEffect } from "react";
 import { useAgentStore } from "@/stores/agentStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { ipc } from "@/lib/ipc-client";
+import { getLatestModels, formatContextWindow, type ModelDefinition } from "@/lib/models";
 import type { Skill, AppSettings } from "@/types/ipc";
+import { Button } from "@/components/ui/Button";
+
+const CloseIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
 
 interface ToolOption {
   name: string;
@@ -41,8 +50,10 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
     new Set(AVAILABLE_TOOLS.map((t) => t.name))
   );
   const [showToolSection, setShowToolSection] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("sonnet");
   const { launchAgent } = useAgentStore();
   const { activeProjectId } = useProjectStore();
+  const latestModels = getLatestModels();
 
   useEffect(() => {
     if (open) {
@@ -64,6 +75,7 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
     try {
       const settings = await ipc.invoke("settings:get");
       setPermissionMode(settings.permissionMode);
+      setSelectedModel(settings.defaultModel || "sonnet");
       // Auto-expand tool section so user sees what's allowed
       if (settings.permissionMode === "ask") {
         setShowToolSection(true);
@@ -110,6 +122,7 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
       await launchAgent({
         projectId: activeProjectId,
         prompt: prompt.trim(),
+        model: selectedModel,
         skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
         useWorktree,
         allowedTools:
@@ -152,12 +165,21 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
       />
 
       {/* Dialog */}
-      <div className="relative bg-card border border-border rounded-xl shadow-lg w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-semibold text-foreground mb-4">
-          New Agent
-        </h2>
+      <div className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-[calc(100%-2rem)] sm:max-w-md md:max-w-lg mx-2 sm:mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-semibold text-foreground">
+            New Agent
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <CloseIcon />
+          </button>
+        </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="mb-4">
             <label
               htmlFor="prompt"
@@ -174,6 +196,23 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
               className="w-full resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               autoFocus
             />
+          </div>
+
+          {/* Model selector */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Model
+            </label>
+            <div className="flex gap-2">
+              {latestModels.map((model) => (
+                <ModelChip
+                  key={model.id}
+                  model={model}
+                  selected={selectedModel === model.alias}
+                  onClick={() => setSelectedModel(model.alias)}
+                />
+              ))}
+            </div>
           </div>
 
           {/* Skills selector */}
@@ -285,32 +324,63 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
                 type="checkbox"
                 checked={useWorktree}
                 onChange={(e) => setUseWorktree(e.target.checked)}
-                className="rounded border-border"
+                className="rounded border-border focus:ring-2 focus:ring-ring"
               />
               <span className="text-sm text-foreground">
                 Use isolated worktree
               </span>
             </label>
           </div>
+        </div>
 
-          <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-accent"
-            >
+        <div className="flex justify-end gap-3 px-4 sm:px-6 py-4 border-t border-border bg-muted/30">
+            <Button variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={!prompt.trim() || !activeProjectId || loading}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              loading={loading}
             >
-              {loading ? "Launching..." : "Launch Agent"}
-            </button>
+              Launch Agent
+            </Button>
           </div>
         </form>
       </div>
     </div>
+  );
+};
+
+// Model selection chip component
+const ModelChip: React.FC<{
+  model: ModelDefinition;
+  selected: boolean;
+  onClick: () => void;
+}> = ({ model, selected, onClick }) => {
+  const familyColor = () => {
+    switch (model.family) {
+      case "opus": return selected
+        ? "bg-purple-500 text-white border-purple-500"
+        : "bg-purple-500/10 text-purple-400 border-purple-500/30 hover:bg-purple-500/20";
+      case "sonnet": return selected
+        ? "bg-blue-500 text-white border-blue-500"
+        : "bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20";
+      case "haiku": return selected
+        ? "bg-green-500 text-white border-green-500"
+        : "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20";
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 px-3 py-2.5 rounded-lg border text-left transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background ${familyColor()}`}
+    >
+      <div className="text-sm font-semibold">{model.family.charAt(0).toUpperCase() + model.family.slice(1)}</div>
+      <div className={`text-xs ${selected ? "text-white/80" : "text-muted-foreground"}`}>
+        {model.version} · {formatContextWindow(model.contextWindow)}
+      </div>
+    </button>
   );
 };

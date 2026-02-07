@@ -34,6 +34,7 @@ const VALID_INVOKE_CHANNELS = new Set([
   "skill:delete",
   "skill:export",
   "skill:import",
+  "skill:importFromGit",
   "automation:list",
   "automation:create",
   "automation:update",
@@ -66,6 +67,20 @@ const VALID_INVOKE_CHANNELS = new Set([
   "image:pick",
   "image:readBase64",
   "image:validatePath",
+  "image:saveFromClipboard",
+  "image:saveFromBase64",
+  "command:openVSCode",
+  "command:rebuild",
+  "command:build",
+  "git:getCurrentBranch",
+  "git:getDiffStats",
+  "git:status",
+  "git:add",
+  "git:commit",
+  "git:push",
+  "git:pull",
+  "git:checkout",
+  "git:branch",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([

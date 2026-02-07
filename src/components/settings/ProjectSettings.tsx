@@ -178,6 +178,32 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+
+          {/* Build Command */}
+          <div>
+            <label
+              htmlFor="buildCommand"
+              className="block text-sm font-medium text-foreground mb-1"
+            >
+              Build Command
+            </label>
+            <input
+              id="buildCommand"
+              type="text"
+              value={settings.buildCommand || ""}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  buildCommand: e.target.value || undefined,
+                })
+              }
+              placeholder="npm run build"
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Command to run with /build. Runs in project directory.
+            </p>
+          </div>
         </div>
 
         {/* Actions */}

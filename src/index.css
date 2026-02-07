@@ -4,23 +4,24 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Light theme - Pastel Blue */
+    --background: 210 60% 85%;
+    --foreground: 222 47% 15%;
+    --card: 210 50% 88%;
+    --card-foreground: 222 47% 15%;
+    --primary: 210 80% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 55% 78%;
+    --secondary-foreground: 222 47% 20%;
+    --muted: 210 50% 75%;
+    --muted-foreground: 215 40% 35%;
+    --accent: 210 55% 76%;
+    --accent-foreground: 222 47% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 45% 68%;
+    --input: 210 50% 80%;
+    --ring: 210 80% 40%;
     --radius: 0.5rem;
   }
 
@@ -66,9 +67,29 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background-color: hsl(var(--background));
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - Dark mode */
+.dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: hsl(222 25% 28%);
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: hsl(222 25% 36%);
+}
+
+/* Custom scrollbar - Light mode */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -79,12 +100,12 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(222 25% 28%);
+  background: hsl(210 30% 75%);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(222 25% 36%);
+  background: hsl(210 30% 65%);
 }
 
 ::-webkit-scrollbar-corner {

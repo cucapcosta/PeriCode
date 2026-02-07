@@ -1,4 +1,5 @@
 import { ipcMain, shell } from "electron";
+import simpleGit from "simple-git";
 import { storage } from "../services/storage";
 import { worktreeManager } from "../services/worktree-manager";
 import type { FileDiff, WorktreeInfo, GitStatus } from "../../src/types/ipc";
@@ -81,15 +82,17 @@ export function registerWorktreeHandlers(): void {
       threadId: string,
       filePath: string
     ): Promise<void> => {
+      const path = require("path");
+      const { execFile } = require("child_process");
       const thread = storage.getThread(threadId);
       if (!thread || !thread.worktreePath) {
         throw new Error("Thread has no worktree");
       }
-      const path = require("path");
-      const { execFile } = require("child_process");
       const fullPath = path.join(thread.worktreePath, filePath);
-      // Try opening in VS Code first, fall back to shell.openPath
-      execFile("code", ["--goto", fullPath], (err: Error | null) => {
+      // Resolve the project path so VS Code opens with the project folder
+      const project = storage.getProject(thread.projectId);
+      const projectPath = project?.path ?? thread.worktreePath;
+      execFile("code", [projectPath, "--goto", fullPath], (err: Error | null) => {
         if (err) {
           shell.openPath(fullPath);
         }
@@ -102,15 +105,261 @@ export function registerWorktreeHandlers(): void {
     async (
       _event,
       filePath: string,
+      lineOrProjectPath?: number | string,
       line?: number
     ): Promise<void> => {
       const { execFile } = require("child_process");
-      const target = line ? `${filePath}:${line}` : filePath;
-      execFile("code", ["--goto", target], (err: Error | null) => {
+      // Support two signatures:
+      //   (filePath, line?)
+      //   (filePath, projectPath, line?)
+      let projectPath: string | undefined;
+      let lineNum: number | undefined;
+      if (typeof lineOrProjectPath === "string") {
+        projectPath = lineOrProjectPath;
+        lineNum = line;
+      } else {
+        lineNum = lineOrProjectPath;
+      }
+      const target = lineNum ? `${filePath}:${lineNum}` : filePath;
+      const args = projectPath ? [projectPath, "--goto", target] : ["--goto", target];
+      execFile("code", args, (err: Error | null) => {
         if (err) {
           shell.openPath(filePath);
         }
       });
+    }
+  );
+
+  // Get current branch for a project
+  ipcMain.handle(
+    "git:getCurrentBranch",
+    async (_event, projectId: string): Promise<string | null> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return null;
+      }
+      try {
+        const git = simpleGit(project.path);
+        const branchSummary = await git.branchLocal();
+        return branchSummary.current || null;
+      } catch {
+        return null;
+      }
+    }
+  );
+
+  // Get git diff stats (additions/deletions) for a project
+  ipcMain.handle(
+    "git:getDiffStats",
+    async (_event, projectId: string): Promise<{ additions: number; deletions: number; files: number } | null> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return null;
+      }
+      try {
+        const git = simpleGit(project.path);
+        // Get diff stats for unstaged + staged changes
+        const diffSummary = await git.diffSummary();
+        return {
+          additions: diffSummary.insertions,
+          deletions: diffSummary.deletions,
+          files: diffSummary.files.length,
+        };
+      } catch {
+        return null;
+      }
+    }
+  );
+
+  // Git status - get detailed status of the working tree
+  ipcMain.handle(
+    "git:status",
+    async (_event, projectId: string): Promise<{
+      staged: string[];
+      modified: string[];
+      untracked: string[];
+      ahead: number;
+      behind: number;
+      current: string | null;
+    } | null> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return null;
+      }
+      try {
+        const git = simpleGit(project.path);
+        const status = await git.status();
+        return {
+          staged: status.staged,
+          modified: status.modified,
+          untracked: status.not_added,
+          ahead: status.ahead,
+          behind: status.behind,
+          current: status.current,
+        };
+      } catch {
+        return null;
+      }
+    }
+  );
+
+  // Git add - stage files
+  ipcMain.handle(
+    "git:add",
+    async (_event, projectId: string, files: string[]): Promise<{ success: boolean; error?: string }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, error: "Project not found" };
+      }
+      try {
+        const git = simpleGit(project.path);
+        if (files.length === 0 || (files.length === 1 && files[0] === ".")) {
+          await git.add(".");
+        } else {
+          await git.add(files);
+        }
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // Git commit - commit staged changes
+  ipcMain.handle(
+    "git:commit",
+    async (_event, projectId: string, message: string): Promise<{ success: boolean; hash?: string; error?: string }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, error: "Project not found" };
+      }
+      try {
+        const git = simpleGit(project.path);
+        const result = await git.commit(message);
+        return { success: true, hash: result.commit };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // Git push - push to remote
+  ipcMain.handle(
+    "git:push",
+    async (_event, projectId: string, remote?: string, branch?: string): Promise<{ success: boolean; error?: string }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, error: "Project not found" };
+      }
+      try {
+        const git = simpleGit(project.path);
+        if (remote && branch) {
+          await git.push(remote, branch);
+        } else if (remote) {
+          await git.push(remote);
+        } else {
+          await git.push();
+        }
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // Git pull - pull from remote
+  ipcMain.handle(
+    "git:pull",
+    async (_event, projectId: string, remote?: string, branch?: string): Promise<{ success: boolean; summary?: string; error?: string }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, error: "Project not found" };
+      }
+      try {
+        const git = simpleGit(project.path);
+        let result;
+        if (remote && branch) {
+          result = await git.pull(remote, branch);
+        } else if (remote) {
+          result = await git.pull(remote);
+        } else {
+          result = await git.pull();
+        }
+        const summary = `${result.files.length} files changed, ${result.insertions} insertions, ${result.deletions} deletions`;
+        return { success: true, summary };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // Git checkout - switch branches or restore files
+  ipcMain.handle(
+    "git:checkout",
+    async (_event, projectId: string, branchOrPath: string, createNew?: boolean): Promise<{ success: boolean; error?: string }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, error: "Project not found" };
+      }
+      try {
+        const git = simpleGit(project.path);
+        if (createNew) {
+          await git.checkoutLocalBranch(branchOrPath);
+        } else {
+          await git.checkout(branchOrPath);
+        }
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
+  // Git branch - list, create, or delete branches
+  ipcMain.handle(
+    "git:branch",
+    async (_event, projectId: string, action: "list" | "create" | "delete", branchName?: string): Promise<{
+      success: boolean;
+      branches?: string[];
+      current?: string;
+      error?: string
+    }> => {
+      const project = storage.getProject(projectId);
+      if (!project) {
+        return { success: false, error: "Project not found" };
+      }
+      try {
+        const git = simpleGit(project.path);
+
+        switch (action) {
+          case "list": {
+            const branchSummary = await git.branchLocal();
+            return {
+              success: true,
+              branches: branchSummary.all,
+              current: branchSummary.current
+            };
+          }
+          case "create": {
+            if (!branchName) {
+              return { success: false, error: "Branch name required" };
+            }
+            await git.checkoutLocalBranch(branchName);
+            return { success: true };
+          }
+          case "delete": {
+            if (!branchName) {
+              return { success: false, error: "Branch name required" };
+            }
+            await git.deleteLocalBranch(branchName);
+            return { success: true };
+          }
+          default:
+            return { success: false, error: "Invalid action" };
+        }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
     }
   );
 }

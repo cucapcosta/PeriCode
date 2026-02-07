@@ -3,8 +3,65 @@ import { ipc } from "@/lib/ipc-client";
 import type { StatusInfo, ThreadCostSummary } from "@/types/ipc";
 import { estimateCost, getModelPricing } from "@/lib/model-pricing";
 
+// Icons as inline SVG components for better visual hierarchy
+const ActivityIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="22,12 18,12 15,21 9,3 6,12 2,12" />
+  </svg>
+);
+
+const TokenIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v12M6 12h12" />
+  </svg>
+);
+
+const DollarIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="12" y1="1" x2="12" y2="23" />
+    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+  </svg>
+);
+
+const TerminalIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="4,17 10,11 4,5" />
+    <line x1="12" y1="19" x2="20" y2="19" />
+  </svg>
+);
+
+const BellIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+const GitBranchIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="6" y1="3" x2="6" y2="15" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <path d="M18 9a9 9 0 0 1-9 9" />
+  </svg>
+);
+
+const GitDiffIcon = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 3v18M3 12h18" />
+  </svg>
+);
+
+interface GitDiffStats {
+  additions: number;
+  deletions: number;
+  files: number;
+}
+
 interface StatusBarProps {
   activeThreadId?: string | null;
+  activeProjectId?: string | null;
   onNotificationsClick?: () => void;
 }
 
@@ -21,10 +78,12 @@ function shortModelName(modelId: string): string {
   return modelId.replace(/^claude-/, "");
 }
 
-export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotificationsClick }) => {
+export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, activeProjectId, onNotificationsClick }) => {
   const [status, setStatus] = useState<StatusInfo | null>(null);
   const [threadCost, setThreadCost] = useState<ThreadCostSummary | null>(null);
   const [showModelDetail, setShowModelDetail] = useState(false);
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null);
+  const [diffStats, setDiffStats] = useState<GitDiffStats | null>(null);
   const detailRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -55,17 +114,47 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
     }
   };
 
+  const fetchBranch = async () => {
+    if (!activeProjectId) {
+      setCurrentBranch(null);
+      return;
+    }
+    try {
+      const branch = await ipc.invoke("git:getCurrentBranch", activeProjectId);
+      setCurrentBranch(branch as string | null);
+    } catch {
+      setCurrentBranch(null);
+    }
+  };
+
+  const fetchDiffStats = async () => {
+    if (!activeProjectId) {
+      setDiffStats(null);
+      return;
+    }
+    try {
+      const stats = await ipc.invoke("git:getDiffStats", activeProjectId);
+      setDiffStats(stats as GitDiffStats | null);
+    } catch {
+      setDiffStats(null);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchThreadCost();
+    fetchBranch();
+    fetchDiffStats();
     intervalRef.current = setInterval(() => {
       fetchStatus();
       fetchThreadCost();
+      fetchBranch();
+      fetchDiffStats();
     }, 2000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [activeThreadId]);
+  }, [activeThreadId, activeProjectId]);
 
   // Listen for cost updates to refresh sooner
   useEffect(() => {
@@ -128,26 +217,31 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
   const isThreadScope = !!threadCost;
 
   return (
-    <div className="flex items-center px-3 py-1 border-t border-border bg-card text-[11px] text-muted-foreground select-none flex-shrink-0">
-      {/* Left section */}
-      <div className="flex items-center gap-1.5">
-        {status.runningAgents > 0 ? (
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+    <div className="flex items-center px-3 sm:px-4 py-1.5 border-t border-border bg-card/80 backdrop-blur-sm text-xs text-muted-foreground select-none flex-shrink-0">
+      {/* Left section - Agent status */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5">
+          {status.runningAgents > 0 ? (
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+            </span>
+          ) : (
+            <span className="inline-flex rounded-full h-2.5 w-2.5 bg-muted-foreground/40" />
+          )}
+          <span className={status.runningAgents > 0 ? "text-foreground font-medium" : ""}>
+            {status.runningAgents} running
           </span>
-        ) : (
-          <span className="inline-flex rounded-full h-2 w-2 bg-muted-foreground/30" />
-        )}
-        <span>{status.runningAgents} running</span>
+        </div>
         {status.queuedAgents > 0 && (
-          <span className="text-yellow-500">+{status.queuedAgents}q</span>
+          <span className="px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 text-[11px] font-medium">
+            +{status.queuedAgents} queued
+          </span>
         )}
         {status.activeAutomations > 0 && (
-          <>
-            <span className="text-muted-foreground/30 mx-1">|</span>
-            <span>{status.activeAutomations} auto</span>
-          </>
+          <span className="px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 text-[11px] font-medium">
+            {status.activeAutomations} auto
+          </span>
         )}
       </div>
 
@@ -155,27 +249,71 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
       <div className="flex-1" />
 
       {/* Right section */}
-      <div className="flex items-center gap-3 relative">
+      <div className="flex items-center gap-2 sm:gap-3 relative">
+        {/* Git branch indicator */}
+        {currentBranch && (
+          <>
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <GitBranchIcon />
+              <span className="font-mono text-[11px] max-w-[120px] truncate" title={currentBranch}>
+                {currentBranch}
+              </span>
+            </span>
+            {/* Git diff stats */}
+            {diffStats && (diffStats.additions > 0 || diffStats.deletions > 0) && (
+              <span
+                className="flex items-center gap-1 text-[11px] font-mono"
+                title={`${diffStats.files} file${diffStats.files !== 1 ? "s" : ""} changed`}
+              >
+                {diffStats.additions > 0 && (
+                  <span className="text-green-400">+{diffStats.additions}</span>
+                )}
+                {diffStats.deletions > 0 && (
+                  <span className="text-red-400">-{diffStats.deletions}</span>
+                )}
+              </span>
+            )}
+            <span className="w-px h-3 bg-border" />
+          </>
+        )}
         {/* Scope label */}
         {isThreadScope && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-            thread
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
+            Thread
           </span>
         )}
 
         {/* Token usage - clickable for detail if model data exists */}
         <button
           onClick={() => hasModelData && setShowModelDetail((v) => !v)}
-          className={`flex items-center gap-1.5 ${hasModelData ? "hover:text-foreground cursor-pointer" : "cursor-default"}`}
+          className={`flex items-center gap-2 px-2 py-1 rounded-md transition-colors ${
+            hasModelData
+              ? "hover:bg-accent hover:text-foreground cursor-pointer"
+              : "cursor-default"
+          }`}
           title={hasModelData ? "Click for per-model breakdown" : "Token usage"}
         >
-          <span>
-            {formatTokens(displayTokensIn)}/{formatTokens(displayTokensOut)} tok
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <TokenIcon />
+            <span className="font-mono text-foreground/80">
+              {formatTokens(displayTokensIn)}<span className="text-muted-foreground/60">/</span>{formatTokens(displayTokensOut)}
+            </span>
           </span>
-          <span className="text-muted-foreground/30">|</span>
-          <span className="font-mono">{formatCost(displayCost)}</span>
+          <span className="w-px h-3 bg-border" />
+          <span className="flex items-center gap-1">
+            <DollarIcon />
+            <span className="font-mono font-medium text-foreground">{formatCost(displayCost)}</span>
+          </span>
           {hasModelData && (
-            <span className="text-[9px] opacity-60">{showModelDetail ? "\u25B2" : "\u25BC"}</span>
+            <svg
+              className={`w-3 h-3 text-muted-foreground/60 transition-transform ${showModelDetail ? "rotate-180" : ""}`}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polyline points="6,9 12,15 18,9" />
+            </svg>
           )}
         </button>
 
@@ -183,7 +321,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
         {showModelDetail && hasModelData && (
           <div
             ref={detailRef}
-            className="absolute bottom-full right-0 mb-2 w-80 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden"
+            className="absolute bottom-full right-0 mb-2 w-[calc(100vw-1rem)] sm:w-80 max-w-80 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden"
           >
             <div className="px-3 py-2 border-b border-border bg-muted/30">
               <span className="text-xs font-semibold text-foreground">
@@ -291,26 +429,28 @@ export const StatusBar: React.FC<StatusBarProps> = ({ activeThreadId, onNotifica
           </div>
         )}
 
-        <span className="text-muted-foreground/30">|</span>
-        <span className="flex items-center gap-1">
-          <span
-            className={`inline-flex rounded-full h-1.5 w-1.5 ${
-              status.cliAvailable ? "bg-green-500" : "bg-red-500"
-            }`}
-          />
-          <span>{status.cliAvailable ? "CLI" : "No CLI"}</span>
+        <span className="w-px h-3 bg-border" />
+        <span
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${
+            status.cliAvailable
+              ? "text-green-400"
+              : "text-red-400 bg-red-500/10"
+          }`}
+          title={status.cliAvailable ? "Claude CLI available" : "Claude CLI not found"}
+        >
+          <TerminalIcon />
+          <span className="text-[11px] font-medium">
+            {status.cliAvailable ? "CLI" : "No CLI"}
+          </span>
         </span>
         {onNotificationsClick && (
-          <>
-            <span className="text-muted-foreground/30">|</span>
-            <button
-              onClick={onNotificationsClick}
-              className="hover:text-foreground transition-colors"
-              title="Notifications"
-            >
-              bell
-            </button>
-          </>
+          <button
+            onClick={onNotificationsClick}
+            className="p-1.5 rounded-md hover:bg-accent hover:text-foreground transition-colors"
+            title="Notifications"
+          >
+            <BellIcon />
+          </button>
         )}
       </div>
     </div>
