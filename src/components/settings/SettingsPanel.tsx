@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { ipc } from "@/lib/ipc-client";
 import { MODELS, getLatestModels, formatContextWindow, type ModelDefinition } from "@/lib/models";
-import type { AppSettings } from "@/types/ipc";
+import type { AppSettings, ProviderInfo, ModelInfo, ProviderType } from "@/types/ipc";
 
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
 }
 
-type SettingsTab = "general" | "agents" | "automations" | "appearance" | "advanced";
+type SettingsTab = "general" | "providers" | "agents" | "automations" | "appearance" | "advanced";
 
 const AVAILABLE_TOOLS = [
   "Read", "Edit", "Write", "Bash", "Glob", "Grep",
@@ -21,9 +21,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
   const [cliStatus, setCliStatus] = useState<{ available: boolean; version: string | null; path: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Provider state
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [copilotModels, setCopilotModels] = useState<ModelInfo[]>([]);
+  const [copilotAuth, setCopilotAuth] = useState<{ authenticated: boolean; username?: string }>({ authenticated: false });
+  const [authInProgress, setAuthInProgress] = useState(false);
+  const [authCode, setAuthCode] = useState<{ userCode: string; verificationUri: string } | null>(null);
+
   useEffect(() => {
     if (open) {
       loadSettings();
+      loadProviders();
     }
   }, [open]);
 
@@ -37,6 +45,65 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
       setCliStatus(cli);
     } catch (err) {
       console.error("Failed to load settings:", err);
+    }
+  };
+
+  const loadProviders = async () => {
+    try {
+      const [providerList, copilotStatus] = await Promise.all([
+        ipc.invoke("provider:list"),
+        ipc.invoke("copilot:checkAuth"),
+      ]);
+      setProviders(providerList);
+      setCopilotAuth(copilotStatus);
+
+      // Load Copilot models if authenticated
+      if (copilotStatus.authenticated) {
+        const models = await ipc.invoke("provider:getModels", "copilot");
+        setCopilotModels(models);
+      }
+    } catch (err) {
+      console.error("Failed to load providers:", err);
+    }
+  };
+
+  const startCopilotAuth = async () => {
+    try {
+      setAuthInProgress(true);
+      const result = await ipc.invoke("copilot:startAuth") as {
+        userCode: string;
+        verificationUri: string;
+        deviceCode: string;
+        expiresIn: number;
+        interval: number;
+      };
+      setAuthCode({ userCode: result.userCode, verificationUri: result.verificationUri });
+
+      // Open verification URL in browser
+      window.open(result.verificationUri, "_blank");
+
+      // Poll for token
+      const pollResult = await ipc.invoke("copilot:pollAuth", result.deviceCode, result.interval, result.expiresIn);
+      if (pollResult.success) {
+        setCopilotAuth({ authenticated: true, username: pollResult.username });
+        const models = await ipc.invoke("provider:getModels", "copilot");
+        setCopilotModels(models);
+      }
+    } catch (err) {
+      console.error("Copilot auth failed:", err);
+    } finally {
+      setAuthInProgress(false);
+      setAuthCode(null);
+    }
+  };
+
+  const logoutCopilot = async () => {
+    try {
+      await ipc.invoke("copilot:logout");
+      setCopilotAuth({ authenticated: false });
+      setCopilotModels([]);
+    } catch (err) {
+      console.error("Copilot logout failed:", err);
     }
   };
 
@@ -55,6 +122,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
 
   const tabs: Array<{ key: SettingsTab; label: string }> = [
     { key: "general", label: "General" },
+    { key: "providers", label: "Providers" },
     { key: "agents", label: "Agents" },
     { key: "automations", label: "Automations" },
     { key: "appearance", label: "Appearance" },
@@ -145,6 +213,186 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
                       Install Claude Code CLI or set path in Advanced tab.
                     </p>
                   </SettingGroup>
+                </div>
+              )}
+
+              {activeTab === "providers" && (
+                <div className="space-y-6">
+                  <SettingGroup label="Default Provider">
+                    <select
+                      value={settings.providers?.defaultProvider ?? "claude"}
+                      onChange={(e) => {
+                        const defaultProvider = e.target.value as ProviderType;
+                        saveSettings({
+                          providers: {
+                            ...settings.providers,
+                            defaultProvider,
+                            claude: settings.providers?.claude ?? { enabled: true, defaultModel: "sonnet" },
+                            copilot: settings.providers?.copilot ?? { enabled: false, authenticated: false, defaultModel: "gpt-4.1" },
+                          },
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                    >
+                      <option value="claude">Claude CLI</option>
+                      <option value="copilot" disabled={!copilotAuth.authenticated}>
+                        GitHub Copilot {!copilotAuth.authenticated && "(not connected)"}
+                      </option>
+                    </select>
+                  </SettingGroup>
+
+                  {/* Claude CLI Provider */}
+                  <div className="p-4 rounded-lg border border-border bg-accent/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex rounded-full h-2 w-2 ${cliStatus?.available ? "bg-green-500" : "bg-red-500"}`} />
+                        <span className="font-medium text-foreground">Claude CLI</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {cliStatus?.available ? `v${cliStatus.version}` : "Not found"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Direct access to Claude via the official CLI. Supports Opus, Sonnet, and Haiku models.
+                    </p>
+                    <div>
+                      <label className="block text-xs text-muted-foreground mb-1">Default Model</label>
+                      <select
+                        value={settings.providers?.claude?.defaultModel ?? "sonnet"}
+                        onChange={(e) => {
+                          saveSettings({
+                            providers: {
+                              ...settings.providers,
+                              defaultProvider: settings.providers?.defaultProvider ?? "claude",
+                              claude: {
+                                ...settings.providers?.claude,
+                                enabled: true,
+                                defaultModel: e.target.value,
+                              },
+                              copilot: settings.providers?.copilot ?? { enabled: false, authenticated: false, defaultModel: "gpt-4.1" },
+                            },
+                          });
+                        }}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                      >
+                        <option value="opus">Opus 4.6 - Most capable</option>
+                        <option value="sonnet">Sonnet 4.5 - Balanced</option>
+                        <option value="haiku">Haiku 4.5 - Fast</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* GitHub Copilot Provider */}
+                  <div className="p-4 rounded-lg border border-border bg-accent/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex rounded-full h-2 w-2 ${copilotAuth.authenticated ? "bg-green-500" : "bg-yellow-500"}`} />
+                        <span className="font-medium text-foreground">GitHub Copilot</span>
+                      </div>
+                      {copilotAuth.authenticated && (
+                        <span className="text-xs text-green-400">@{copilotAuth.username}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Access GPT-5, Claude, Gemini, and Grok models via your GitHub Copilot subscription.
+                    </p>
+
+                    {!copilotAuth.authenticated ? (
+                      <div>
+                        {authCode ? (
+                          <div className="p-3 rounded-lg bg-background border border-border">
+                            <p className="text-sm text-foreground mb-2">
+                              Enter this code on GitHub:
+                            </p>
+                            <div className="text-2xl font-mono font-bold text-primary text-center py-2">
+                              {authCode.userCode}
+                            </div>
+                            <p className="text-xs text-muted-foreground text-center mt-2">
+                              Waiting for authorization...
+                            </p>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={startCopilotAuth}
+                            disabled={authInProgress}
+                            className="w-full px-4 py-2 rounded-lg bg-[#24292e] text-white text-sm font-medium hover:bg-[#2f363d] disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                            </svg>
+                            {authInProgress ? "Connecting..." : "Connect to GitHub"}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Default Model</label>
+                          <select
+                            value={settings.providers?.copilot?.defaultModel ?? "gpt-4.1"}
+                            onChange={(e) => {
+                              saveSettings({
+                                providers: {
+                                  ...settings.providers,
+                                  defaultProvider: settings.providers?.defaultProvider ?? "claude",
+                                  claude: settings.providers?.claude ?? { enabled: true, defaultModel: "sonnet" },
+                                  copilot: {
+                                    ...settings.providers?.copilot,
+                                    enabled: true,
+                                    authenticated: true,
+                                    defaultModel: e.target.value,
+                                  },
+                                },
+                              });
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                          >
+                            <optgroup label="OpenAI Codex (Responses API)">
+                              <option value="gpt-5.3-codex">GPT-5.3 Codex</option>
+                              <option value="gpt-5.2-codex">GPT-5.2 Codex</option>
+                              <option value="gpt-5.1-codex-max">GPT-5.1 Codex Max</option>
+                              <option value="gpt-5.1-codex">GPT-5.1 Codex</option>
+                              <option value="gpt-5.1-codex-mini">GPT-5.1 Codex Mini</option>
+                            </optgroup>
+                            <optgroup label="OpenAI">
+                              <option value="gpt-5.2">GPT-5.2</option>
+                              <option value="gpt-5.1">GPT-5.1</option>
+                              <option value="gpt-5">GPT-5</option>
+                              <option value="gpt-5-mini">GPT-5 Mini</option>
+                              <option value="gpt-4.1">GPT-4.1</option>
+                              <option value="gpt-4o">GPT-4o</option>
+                            </optgroup>
+                            <optgroup label="OpenAI Reasoning">
+                              <option value="o4-mini">o4 Mini</option>
+                              <option value="o3">o3</option>
+                              <option value="o3-mini">o3 Mini</option>
+                            </optgroup>
+                            <optgroup label="Anthropic">
+                              <option value="claude-opus-4.6">Claude Opus 4.6</option>
+                              <option value="claude-opus-4.5">Claude Opus 4.5</option>
+                              <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+                              <option value="claude-sonnet-4">Claude Sonnet 4</option>
+                              <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+                            </optgroup>
+                            <optgroup label="Google">
+                              <option value="gemini-3-pro">Gemini 3 Pro</option>
+                              <option value="gemini-3-flash">Gemini 3 Flash</option>
+                              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            </optgroup>
+                            <optgroup label="xAI">
+                              <option value="grok-code-fast-1">Grok Code Fast 1</option>
+                            </optgroup>
+                          </select>
+                        </div>
+                        <button
+                          onClick={logoutCopilot}
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

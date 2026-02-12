@@ -612,7 +612,7 @@ export const storage = {
       theme: "dark", defaultModel: "sonnet",
       maxConcurrentAgents: 3, defaultBudgetLimitUsd: 10.0,
       defaultTools: ["Read", "Edit", "Write", "Bash", "Glob", "Grep"],
-      permissionMode: "acceptEdits" as const,
+      permissionMode: "ask" as const,
       defaultSandboxPolicy: "workspace-write" as const,
       automationsEnabled: true, notifyOnCompletion: true, notifyOnFailure: true,
       fontSize: 14, interactionStyle: "detailed" as const,

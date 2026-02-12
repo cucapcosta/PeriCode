@@ -1,0 +1,52 @@
+# Maintainer: Your Name <your.email@example.com>
+pkgname=pericode
+pkgver=0.51
+pkgrel=1
+pkgdesc="Uma ferramenta periquitante - Multi-agent command center for Claude Code"
+arch=('x86_64')
+url="https://github.com/cucapcosta/pericode"
+license=('MIT')
+depends=('electron' 'nodejs')
+makedepends=('npm' 'git')
+optdepends=('claude-cli: Required for AI functionality')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/cucapcosta/pericode/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    npm ci
+    npm run build
+    npm run package
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Install app files
+    install -dm755 "$pkgdir/opt/$pkgname"
+    cp -r out/pericode-linux-x64/* "$pkgdir/opt/$pkgname/"
+
+    # Create launcher script
+    install -dm755 "$pkgdir/usr/bin"
+    cat > "$pkgdir/usr/bin/$pkgname" << 'EOF'
+#!/bin/bash
+exec /opt/pericode/pericode "$@"
+EOF
+    chmod +x "$pkgdir/usr/bin/$pkgname"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/$pkgname.desktop" << EOF
+[Desktop Entry]
+Name=PeriCode
+Comment=Multi-agent command center for Claude Code
+Exec=/opt/pericode/pericode %U
+Icon=pericode
+Type=Application
+Categories=Development;IDE;
+Terminal=false
+StartupWMClass=pericode
+EOF
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE" 2>/dev/null || true
+}

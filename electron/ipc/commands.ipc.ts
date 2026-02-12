@@ -20,6 +20,8 @@ export function registerCommandHandlers(): void {
     }
   );
 
+  // Dev-only: rebuild is only available when running from source (not packaged)
+  if (!app.isPackaged) {
   ipcMain.handle(
     "command:rebuild",
     async (_event, projectPath: string): Promise<void> => {
@@ -33,8 +35,7 @@ export function registerCommandHandlers(): void {
       const scriptPath = path.join(os.tmpdir(), scriptName);
 
       if (isWin) {
-        const appName = "pericode";
-        const outPath = path.join(projectPath, "out", `${appName}-win32-x64`, `${appName}.exe`).replace(/\\/g, "\\\\");
+        const squirrelDir = path.join(projectPath, "out", "make", "squirrel.windows", "x64").replace(/\\/g, "\\\\");
 
         const batchContent = `@echo off
 title PeriCode Rebuild
@@ -60,34 +61,29 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo ========================================
-echo   Starting PeriCode...
+echo   Installing PeriCode...
 echo ========================================
 echo.
 
-set "APP_PATH=${outPath}"
-if exist "%APP_PATH%" (
-    echo Starting PeriCode detached...
-    start "" /B cmd /c "start "" "%APP_PATH%""
-    timeout /t 1 /nobreak >nul
-    goto :done
+set "INSTALLER_DIR=${squirrelDir}"
+set "SETUP_EXE="
+for %%f in ("%INSTALLER_DIR%\\*Setup.exe") do (
+    set "SETUP_EXE=%%f"
 )
 
-echo Looking for executable in out folder...
-for /r "${projectPath}\\out" %%f in (${appName}.exe) do (
-    echo Found: %%f
-    start "" /B cmd /c "start "" "%%f""
-    timeout /t 1 /nobreak >nul
-    goto :done
+if defined SETUP_EXE (
+    echo Running installer: %SETUP_EXE%
+    start "" "%SETUP_EXE%"
+    timeout /t 2 /nobreak >nul
+) else (
+    echo.
+    echo Could not find Setup.exe in %INSTALLER_DIR%
+    echo Please install manually.
+    pause
 )
 
 echo.
-echo Could not find built executable.
-echo Please start manually from: ${projectPath}\\out
-pause
-
-:done
-echo.
-echo Build complete! You can close this window.
+echo Done! You can close this window.
 del "%~f0"
 `;
         fs.writeFileSync(scriptPath, batchContent, { encoding: "utf8" });
@@ -165,6 +161,7 @@ rm -f "$0"
       }, 500);
     }
   );
+  } // end dev-only rebuild guard
 
   ipcMain.handle(
     "command:build",

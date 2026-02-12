@@ -10,6 +10,7 @@ import { registerExportHandlers } from "./export.ipc";
 import { registerNotesHandlers } from "./notes.ipc";
 import { registerImageHandlers } from "./images.ipc";
 import { registerCommandHandlers } from "./commands.ipc";
+import { registerProviderHandlers } from "./providers.ipc";
 
 export function registerAllIPCHandlers(): void {
   registerProjectHandlers();
@@ -24,4 +25,5 @@ export function registerAllIPCHandlers(): void {
   registerNotesHandlers();
   registerImageHandlers();
   registerCommandHandlers();
+  registerProviderHandlers();
 }

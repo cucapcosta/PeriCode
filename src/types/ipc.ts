@@ -11,6 +11,7 @@ export interface Project {
 }
 
 export interface ProjectSettings {
+  provider?: ProviderType;
   model?: string;
   allowedTools?: string[];
   systemPrompt?: string;
@@ -58,6 +59,7 @@ export interface MessageContent {
 export interface AgentLaunchConfig {
   projectId: string;
   prompt: string;
+  provider?: ProviderType;
   model?: string;
   skillIds?: string[];
   useWorktree?: boolean;
@@ -225,6 +227,45 @@ export interface AutomationTemplate {
   skillIds: string[];
 }
 
+export type ProviderType = "claude" | "copilot";
+
+export interface ClaudeProviderSettings {
+  enabled: boolean;
+  cliPath?: string;
+  defaultModel: string;
+}
+
+export interface CopilotProviderSettings {
+  enabled: boolean;
+  authenticated: boolean;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiry?: number;
+  defaultModel: string;
+  username?: string;
+}
+
+export interface ProvidersSettings {
+  defaultProvider: ProviderType;
+  claude: ClaudeProviderSettings;
+  copilot: CopilotProviderSettings;
+}
+
+export interface ProviderInfo {
+  id: ProviderType;
+  name: string;
+  available: boolean;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description?: string;
+  responsesApi?: boolean;
+  /** Premium request multiplier (0 = free, 1 = standard, etc.) */
+  premiumMultiplier?: number;
+}
+
 export interface AppSettings {
   // General
   theme: "light" | "dark" | "system";
@@ -247,6 +288,8 @@ export interface AppSettings {
   claudeCliPath: string | null;
   logLevel: "debug" | "info" | "warn" | "error";
   skillDirectories: string[];
+  // Providers
+  providers?: ProvidersSettings;
 }
 
 export interface ProjectDetectionInfo {
@@ -409,6 +452,16 @@ export interface IPCInvokeChannels {
     args: [];
     return: { available: boolean; version: string | null; path: string | null };
   };
+
+  // Providers
+  "provider:list": { args: []; return: ProviderInfo[] };
+  "provider:getModels": { args: [provider: ProviderType]; return: ModelInfo[] };
+
+  // Copilot Auth
+  "copilot:startAuth": { args: []; return: { userCode: string; verificationUri: string } };
+  "copilot:pollAuth": { args: [deviceCode: string, interval: number, expiresIn: number]; return: { success: boolean; username?: string; error?: string } };
+  "copilot:checkAuth": { args: []; return: { authenticated: boolean; username?: string } };
+  "copilot:logout": { args: []; return: void };
 
   // Status
   "status:getInfo": { args: []; return: StatusInfo };

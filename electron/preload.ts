@@ -82,6 +82,14 @@ const VALID_INVOKE_CHANNELS = new Set([
   "git:checkout",
   "git:branch",
   "git:publish",
+  // Providers
+  "provider:list",
+  "provider:getModels",
+  // Copilot Auth
+  "copilot:startAuth",
+  "copilot:pollAuth",
+  "copilot:checkAuth",
+  "copilot:logout",
 ]);
 
 const VALID_EVENT_CHANNELS = new Set([

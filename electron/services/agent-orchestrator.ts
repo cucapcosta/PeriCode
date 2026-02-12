@@ -5,6 +5,8 @@ import { sessionRegistry } from "./session-registry";
 import { worktreeManager } from "./worktree-manager";
 import { logger } from "../utils/logger";
 import { estimateCost } from "../utils/model-pricing";
+import { providerRegistry } from "../providers/provider-registry";
+import type { ToolCallMessage } from "../providers/types";
 import type {
   AgentLaunchConfig,
   AppSettings,
@@ -292,6 +294,49 @@ async function launchImmediate(
 
   const fullPrompt = buildPromptWithImages(config.prompt, config.imagePaths);
 
+  // Route to the appropriate provider
+  const selectedProvider = config.provider ?? appSettings.providers?.defaultProvider ?? "claude";
+
+  if (selectedProvider === "copilot") {
+    const adapter = providerRegistry.getAdapter("copilot");
+    if (!adapter) throw new Error("Copilot provider not available");
+
+    const copilotPermission = resolvedMode === "bypassPermissions"
+      ? "full" as const
+      : resolvedMode === "acceptEdits"
+        ? "acceptEdits" as const
+        : "ask" as const;
+
+    const copilotEvents = adapter.runAgent({
+      prompt: fullPrompt,
+      cwd,
+      provider: { provider: "copilot", model: config.model || appSettings.providers?.copilot?.defaultModel || "gpt-4.1" },
+      permissionMode: copilotPermission,
+      allowedTools: resolvedTools,
+      disallowedTools: DISALLOWED_TOOLS,
+    });
+
+    let cancelled = false;
+    activeAgents.set(threadId, {
+      threadId,
+      projectId: config.projectId,
+      kill: () => { cancelled = true; adapter.cancel(); },
+      costUsd: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      modelUsage: {},
+    });
+
+    emitEvent({ type: "launched", threadId });
+
+    runCopilotAgent(threadId, config, copilotEvents).catch((err) => {
+      logger.error("agent-orchestrator", `Copilot agent ${threadId} failed`, err);
+    });
+
+    return thread;
+  }
+
+  // Default: Claude CLI provider
   const { events, kill } = spawnClaude({
     prompt: fullPrompt,
     cwd,
@@ -623,6 +668,159 @@ async function runAgent(
       "agent-orchestrator",
       `Agent ${threadId} error: ${errorMessage}`
     );
+    storage.updateThreadStatus(threadId, "failed");
+    sendToRenderer("agent:error", threadId, { message: errorMessage });
+    sendToRenderer("agent:status", threadId, "failed");
+    emitEvent({ type: "failed", threadId, errorMessage });
+  } finally {
+    activeAgents.delete(threadId);
+    processQueue().catch((err) => {
+      logger.error("agent-orchestrator", "Queue processing error", err);
+    });
+  }
+}
+
+/** Run a Copilot adapter agent, converting ToolCallMessage events into renderer IPC events. */
+async function runCopilotAgent(
+  threadId: string,
+  config: AgentLaunchConfig,
+  events: AsyncGenerator<ToolCallMessage, void, undefined>
+): Promise<void> {
+  let receivedCompletion = false;
+  let fullText = "";
+
+  try {
+    for await (const msg of events) {
+      switch (msg.type) {
+        case "text": {
+          if (msg.isPartial && msg.text) {
+            fullText += msg.text;
+            sendToRenderer("agent:message", threadId, {
+              type: "text",
+              text: msg.text,
+              blockIndex: msg.blockIndex ?? 0,
+            } as StreamMessage);
+          }
+          break;
+        }
+
+        case "tool_use": {
+          sendToRenderer("agent:message", threadId, {
+            type: "tool_use",
+            toolId: msg.toolId,
+            toolName: msg.toolName,
+            toolInput: msg.toolInput,
+            blockIndex: msg.blockIndex ?? 0,
+          } as StreamMessage);
+          break;
+        }
+
+        case "tool_result": {
+          sendToRenderer("agent:message", threadId, {
+            type: "tool_result",
+            toolId: msg.toolId,
+            toolName: msg.toolName,
+            toolOutput: msg.toolOutput,
+          } as StreamMessage);
+          break;
+        }
+
+        case "cost": {
+          const costUsd = msg.costUsd ?? 0;
+          const tokensIn = msg.tokensIn ?? 0;
+          const tokensOut = msg.tokensOut ?? 0;
+          const modelUsage = msg.modelUsage
+            ? Object.fromEntries(
+                Object.entries(msg.modelUsage).map(([model, u]) => [
+                  model,
+                  {
+                    inputTokens: u.inputTokens ?? 0,
+                    outputTokens: u.outputTokens ?? 0,
+                    cacheReadInputTokens: u.cacheReadInputTokens ?? 0,
+                    cacheCreationInputTokens: u.cacheCreationInputTokens ?? 0,
+                    costUsd: u.costUsd ?? 0,
+                  },
+                ])
+              )
+            : undefined;
+
+          trackCost(threadId, config.projectId, costUsd, tokensIn, tokensOut, modelUsage);
+
+          sendToRenderer("agent:message", threadId, {
+            type: "cost",
+            costUsd,
+            tokensIn,
+            tokensOut,
+            modelUsage,
+          } as StreamMessage);
+          break;
+        }
+
+        case "error": {
+          sendToRenderer("agent:error", threadId, {
+            message: msg.errorMessage ?? "Unknown error from Copilot",
+          });
+          break;
+        }
+
+        case "status": {
+          if (msg.status === "completed") {
+            receivedCompletion = true;
+
+            // Store the final message
+            if (fullText) {
+              storage.addMessage(
+                crypto.randomUUID(),
+                threadId,
+                "assistant",
+                [{ type: "text", text: fullText }],
+                0,
+                0,
+                0
+              );
+            }
+
+            storage.updateThreadStatus(threadId, "completed");
+            sendToRenderer("agent:status", threadId, "completed");
+            emitEvent({ type: "completed", threadId });
+          } else if (msg.status === "failed") {
+            storage.updateThreadStatus(threadId, "failed");
+            sendToRenderer("agent:status", threadId, "failed");
+            sendToRenderer("agent:error", threadId, {
+              message: msg.errorMessage ?? "Copilot agent failed",
+            });
+            emitEvent({
+              type: "failed",
+              threadId,
+              errorMessage: msg.errorMessage ?? "Copilot agent failed",
+            });
+            receivedCompletion = true;
+          }
+          break;
+        }
+      }
+    }
+
+    if (!receivedCompletion) {
+      // Stream ended without explicit status — treat as completed
+      if (fullText) {
+        storage.addMessage(
+          crypto.randomUUID(),
+          threadId,
+          "assistant",
+          [{ type: "text", text: fullText }],
+          0,
+          0,
+          0
+        );
+      }
+      storage.updateThreadStatus(threadId, "completed");
+      sendToRenderer("agent:status", threadId, "completed");
+      emitEvent({ type: "completed", threadId });
+    }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    logger.error("agent-orchestrator", `Copilot agent ${threadId} error: ${errorMessage}`);
     storage.updateThreadStatus(threadId, "failed");
     sendToRenderer("agent:error", threadId, { message: errorMessage });
     sendToRenderer("agent:status", threadId, "failed");

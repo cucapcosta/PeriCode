@@ -3,7 +3,7 @@ import { useAgentStore } from "@/stores/agentStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { ipc } from "@/lib/ipc-client";
 import { getLatestModels, formatContextWindow, type ModelDefinition } from "@/lib/models";
-import type { Skill, AppSettings } from "@/types/ipc";
+import type { Skill, AppSettings, ProviderType, ModelInfo } from "@/types/ipc";
 import { Button } from "@/components/ui/Button";
 
 const CloseIcon = () => (
@@ -45,12 +45,15 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [useWorktree, setUseWorktree] = useState(false);
-  const [permissionMode, setPermissionMode] = useState<AppSettings["permissionMode"]>("acceptEdits");
+  const [permissionMode, setPermissionMode] = useState<AppSettings["permissionMode"]>("ask");
   const [selectedTools, setSelectedTools] = useState<Set<string>>(
     new Set(AVAILABLE_TOOLS.map((t) => t.name))
   );
   const [showToolSection, setShowToolSection] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderType>("claude");
   const [selectedModel, setSelectedModel] = useState<string>("sonnet");
+  const [copilotModels, setCopilotModels] = useState<ModelInfo[]>([]);
+  const [copilotAvailable, setCopilotAvailable] = useState(false);
   const { launchAgent } = useAgentStore();
   const { activeProjectId } = useProjectStore();
   const latestModels = getLatestModels();
@@ -59,6 +62,7 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
     if (open) {
       loadSkills();
       loadSettings();
+      loadCopilotModels();
     }
   }, [open]);
 
@@ -75,13 +79,56 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
     try {
       const settings = await ipc.invoke("settings:get");
       setPermissionMode(settings.permissionMode);
-      setSelectedModel(settings.defaultModel || "sonnet");
+
+      // Check project-level overrides first
+      let provider: ProviderType = settings.providers?.defaultProvider ?? "claude";
+      let model: string | undefined;
+
+      if (activeProjectId) {
+        try {
+          const projectSettings = await ipc.invoke("project:getSettings", activeProjectId);
+          if (projectSettings.provider) {
+            provider = projectSettings.provider;
+            model = projectSettings.model;
+          }
+        } catch { /* project settings not found, use app defaults */ }
+      }
+
+      setSelectedProvider(provider);
+      if (provider === "copilot") {
+        setSelectedModel(model || settings.providers?.copilot?.defaultModel || "gpt-4.1");
+      } else {
+        setSelectedModel(model || settings.defaultModel || "sonnet");
+      }
       // Auto-expand tool section so user sees what's allowed
       if (settings.permissionMode === "ask") {
         setShowToolSection(true);
       }
     } catch {
       // default stays
+    }
+  };
+
+  const loadCopilotModels = async () => {
+    try {
+      const providers = await ipc.invoke("provider:list");
+      const copilot = providers.find((p) => p.id === "copilot");
+      setCopilotAvailable(copilot?.available ?? false);
+      if (copilot?.available) {
+        const models = await ipc.invoke("provider:getModels", "copilot");
+        setCopilotModels(models);
+      }
+    } catch {
+      setCopilotAvailable(false);
+    }
+  };
+
+  const handleProviderChange = (provider: ProviderType) => {
+    setSelectedProvider(provider);
+    if (provider === "claude") {
+      setSelectedModel("sonnet");
+    } else if (provider === "copilot" && copilotModels.length > 0) {
+      setSelectedModel(copilotModels[0].id);
     }
   };
 
@@ -122,6 +169,7 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
       await launchAgent({
         projectId: activeProjectId,
         prompt: prompt.trim(),
+        provider: selectedProvider,
         model: selectedModel,
         skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
         useWorktree,
@@ -198,21 +246,80 @@ export const NewAgentDialog: React.FC<NewAgentDialogProps> = ({
             />
           </div>
 
-          {/* Model selector */}
+          {/* Provider & Model selector */}
           <div className="mb-4">
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Provider
+            </label>
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => handleProviderChange("claude")}
+                className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+                  selectedProvider === "claude"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent"
+                }`}
+              >
+                Claude CLI
+              </button>
+              <button
+                type="button"
+                onClick={() => copilotAvailable && handleProviderChange("copilot")}
+                disabled={!copilotAvailable}
+                className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+                  selectedProvider === "copilot"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : copilotAvailable
+                      ? "bg-background text-muted-foreground border-border hover:text-foreground hover:bg-accent"
+                      : "bg-background text-muted-foreground/50 border-border/50 cursor-not-allowed"
+                }`}
+              >
+                GitHub Copilot
+              </button>
+            </div>
+
             <label className="block text-sm font-medium text-foreground mb-2">
               Model
             </label>
-            <div className="flex gap-2">
-              {latestModels.map((model) => (
-                <ModelChip
-                  key={model.id}
-                  model={model}
-                  selected={selectedModel === model.alias}
-                  onClick={() => setSelectedModel(model.alias)}
-                />
-              ))}
-            </div>
+            {selectedProvider === "claude" ? (
+              <div className="flex gap-2">
+                {latestModels.map((model) => (
+                  <ModelChip
+                    key={model.id}
+                    model={model}
+                    selected={selectedModel === model.alias}
+                    onClick={() => setSelectedModel(model.alias)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                >
+                  {copilotModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}{m.description ? ` — ${m.description}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {(() => {
+                  const sel = copilotModels.find((m) => m.id === selectedModel);
+                  if (!sel) return null;
+                  const pm = sel.premiumMultiplier;
+                  const label = pm === 0 ? "Free" : pm != null ? `${pm}x premium (~$${(pm * 0.04).toFixed(pm < 1 ? 3 : 2)}/req)` : null;
+                  if (!label) return null;
+                  return (
+                    <p className={`text-xs mt-1.5 ${pm === 0 ? "text-green-400" : (pm ?? 1) >= 3 ? "text-orange-400" : "text-muted-foreground"}`}>
+                      {label}{sel.responsesApi ? " · Responses API" : ""}
+                    </p>
+                  );
+                })()}
+              </>
+            )}
           </div>
 
           {/* Skills selector */}

@@ -1,4 +1,4 @@
-import { ipcMain, shell } from "electron";
+import { ipcMain, shell, app } from "electron";
 import simpleGit from "simple-git";
 import { storage } from "../services/storage";
 import { worktreeManager } from "../services/worktree-manager";
@@ -363,7 +363,8 @@ export function registerWorktreeHandlers(): void {
     }
   );
 
-  // Git publish - full release workflow: update version, commit, push, tag
+  // Dev-only: publish is only available when running from source (not packaged)
+  if (!app.isPackaged) {
   ipcMain.handle(
     "git:publish",
     async (_event, projectId: string, version: string): Promise<{
@@ -486,4 +487,5 @@ export function registerWorktreeHandlers(): void {
       }
     }
   );
+  } // end dev-only publish guard
 }

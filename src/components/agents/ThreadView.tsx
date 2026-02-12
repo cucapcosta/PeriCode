@@ -87,7 +87,7 @@ export const ThreadView: React.FC = () => {
   const slashCommands = [
     { name: "code", description: "Open project in VSCode" },
     { name: "build", description: "Run project build command" },
-    { name: "rebuild", description: "Rebuild and restart PeriCode" },
+    ...(import.meta.env.DEV ? [{ name: "rebuild", description: "Rebuild and restart PeriCode" }] : []),
     { name: "status", description: "Show git status" },
     { name: "add", description: "Stage all changes (git add .)" },
     { name: "commit", description: "Commit staged changes" },
@@ -95,7 +95,7 @@ export const ThreadView: React.FC = () => {
     { name: "pull", description: "Pull from remote" },
     { name: "checkout", description: "Switch branch" },
     { name: "branch", description: "List branches" },
-    { name: "publish", description: "Publish release (version)" },
+    ...(import.meta.env.DEV ? [{ name: "publish", description: "Publish release (version)" }] : []),
   ];
   const [buildOutput, setBuildOutput] = useState<{ success: boolean; output: string } | null>(null);
   const [gitOutput, setGitOutput] = useState<{ type: string; success: boolean; message: string } | null>(null);

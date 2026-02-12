@@ -1,0 +1,43 @@
+# Maintainer: Your Name <your.email@example.com>
+# Pre-built binary package - faster installation
+pkgname=pericode-bin
+pkgver=0.51
+pkgrel=1
+pkgdesc="Uma ferramenta periquitante - Multi-agent command center for Claude Code (prebuilt)"
+arch=('x86_64')
+url="https://github.com/cucapcosta/pericode"
+license=('MIT')
+depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst')
+optdepends=('claude-cli: Required for AI functionality')
+provides=('pericode')
+conflicts=('pericode')
+source=("https://github.com/cucapcosta/pericode/releases/download/v$pkgver/pericode-$pkgver-linux-x64.zip")
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir"
+
+    # Install app files
+    install -dm755 "$pkgdir/opt/pericode"
+    cp -r pericode-linux-x64/* "$pkgdir/opt/pericode/" 2>/dev/null || cp -r ./* "$pkgdir/opt/pericode/"
+
+    # Make executable
+    chmod +x "$pkgdir/opt/pericode/pericode"
+
+    # Create launcher symlink
+    install -dm755 "$pkgdir/usr/bin"
+    ln -s /opt/pericode/pericode "$pkgdir/usr/bin/pericode"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/pericode.desktop" << EOF
+[Desktop Entry]
+Name=PeriCode
+Comment=Multi-agent command center for Claude Code
+Exec=/opt/pericode/pericode %U
+Icon=pericode
+Type=Application
+Categories=Development;IDE;
+Terminal=false
+StartupWMClass=pericode
+EOF
+}

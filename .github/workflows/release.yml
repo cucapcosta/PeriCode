@@ -164,7 +164,7 @@ jobs:
             | Windows | x64 | `pericode-*-win32-x64-*.exe` |
             | macOS | x64 (Intel) | `pericode-*-darwin-x64-*.dmg` |
             | macOS | arm64 (Apple Silicon) | `pericode-*-darwin-arm64-*.dmg` |
-            | Linux | x64 | `pericode-*-linux-x64-*.deb` / `.rpm` |
+            | Linux | x64 | `pericode-*-linux-x64-*.deb` / `.rpm` / `.zip` |
 
             ### Installation
 
@@ -175,6 +175,16 @@ jobs:
             **Linux (Debian/Ubuntu):** `sudo dpkg -i pericode-*.deb`
 
             **Linux (Fedora/RHEL):** `sudo rpm -i pericode-*.rpm`
+
+            **Linux (Arch):**
+            ```bash
+            # Option 1: Extract zip
+            unzip pericode-*-linux-x64-*.zip -d ~/.local/share/pericode
+            ln -s ~/.local/share/pericode/pericode ~/.local/bin/pericode
+
+            # Option 2: Use PKGBUILD (see arch/PKGBUILD in repo)
+            cd arch && makepkg -si
+            ```
 
             ### Requirements
 

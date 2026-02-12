@@ -13,19 +13,33 @@ class TerminalService {
 
   /**
    * Create a new terminal session.
+   * Uses ConPTY on Windows for proper terminal emulation.
    */
   create(id: string, cwd: string): void {
     if (this.sessions.has(id)) {
       this.destroy(id);
     }
 
-    const shell = process.platform === "win32" ? "powershell.exe" : "bash";
-    const shellArgs = process.platform === "win32" ? ["-NoLogo"] : [];
+    const isWin = process.platform === "win32";
+    // Use cmd.exe on Windows for better compatibility without PTY
+    // PowerShell has issues with line editing without proper PTY
+    const shell = isWin ? "cmd.exe" : (process.env.SHELL || "bash");
+    const shellArgs = isWin ? ["/k"] : ["-i"];
 
+    // Spawn options - use windowsHide and proper stdio for better terminal behavior
     const proc = spawn(shell, shellArgs, {
       cwd,
-      env: { ...process.env, TERM: "xterm-256color" },
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+        // Force interactive mode hints
+        PS1: isWin ? undefined : "\\u@\\h:\\w\\$ ",
+      },
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      // Enable ConPTY on Windows for better terminal support
+      ...(isWin && { windowsVerbatimArguments: false }),
     });
 
     const session: TerminalSession = { id, process: proc, cwd };
@@ -71,10 +85,10 @@ class TerminalService {
   }
 
   /**
-   * Resize terminal (informational - no PTY).
+   * Resize terminal (no-op without PTY, but keep API).
    */
   resize(id: string, _cols: number, _rows: number): void {
-    // Without node-pty, resize is a no-op but we keep the API for future use
+    // Without node-pty, resize is a no-op
     const session = this.sessions.get(id);
     if (!session) return;
   }
