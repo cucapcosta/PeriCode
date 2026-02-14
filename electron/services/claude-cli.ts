@@ -12,10 +12,17 @@ export interface CliModelUsage {
 }
 
 export interface CliEvent {
-  type: "system" | "assistant" | "result";
+  type: "system" | "assistant" | "result" | "control_request";
   subtype?: string;
   session_id?: string;
   model?: string;
+  // control_request fields
+  request_id?: string;
+  request?: {
+    subtype: string;
+    tool_name?: string;
+    input?: Record<string, unknown>;
+  };
   message?: {
     model?: string;
     content: Array<{
@@ -55,6 +62,8 @@ export interface SpawnClaudeOptions {
 export interface SpawnClaudeResult {
   events: AsyncGenerator<CliEvent, void, undefined>;
   kill: () => void;
+  /** Send a JSON message to the CLI's stdin (for permission responses, etc.) */
+  writeStdin: (data: Record<string, unknown>) => void;
 }
 
 // ── Implementation ─────────────────────────────────────────
@@ -78,8 +87,9 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
   // --verbose is required when combining -p with --output-format stream-json
   const args: string[] = [
     "-p",
-    prompt,
     "--output-format",
+    "stream-json",
+    "--input-format",
     "stream-json",
     "--verbose",
     "--include-partial-messages",
@@ -132,16 +142,42 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
     }
   };
 
+  const writeStdin = (data: Record<string, unknown>): void => {
+    if (!child || killed || child.exitCode !== null) return;
+    try {
+      const line = JSON.stringify(data) + "\n";
+      child.stdin?.write(line);
+      logger.info("claude-cli", `Wrote to stdin: ${line.trim().slice(0, 200)}`);
+    } catch (err) {
+      logger.warn("claude-cli", `Failed to write to stdin: ${err}`);
+    }
+  };
+
   async function* generate(): AsyncGenerator<CliEvent, void, undefined> {
     // Track spawn errors separately since they happen asynchronously
     let spawnError: Error | null = null;
 
     child = spawn(claudeBin, args, {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
       windowsHide: true,
     });
+
+    // Send the initial user message via stdin (since we use --input-format stream-json)
+    const userMessage = {
+      type: "user",
+      message: {
+        role: "user",
+        content: prompt,
+      },
+    };
+    try {
+      child.stdin?.write(JSON.stringify(userMessage) + "\n");
+      logger.info("claude-cli", "Sent initial user message via stdin");
+    } catch (err) {
+      logger.warn("claude-cli", `Failed to send initial message: ${err}`);
+    }
 
     const stderrChunks: string[] = [];
 
@@ -209,7 +245,7 @@ export function spawnClaude(options: SpawnClaudeOptions): SpawnClaudeResult {
     }
   }
 
-  return { events: generate(), kill };
+  return { events: generate(), kill, writeStdin };
 }
 
 // ── Line splitter ──────────────────────────────────────────

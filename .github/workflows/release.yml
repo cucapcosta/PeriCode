@@ -22,14 +22,18 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x64
-          - os: macos-latest
-            platform: darwin
-            arch: x64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
+          # macOS builds disabled - Actions runner cost too high for current stage
+          # - os: macos-latest
+          #   platform: darwin
+          #   arch: x64
+          # - os: macos-latest
+          #   platform: darwin
+          #   arch: arm64
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      CI_BUILD: "true"
 
     steps:
       - name: Checkout code
@@ -54,14 +58,6 @@ jobs:
       - name: Package app (Linux)
         if: matrix.platform == 'linux'
         run: npm run make -- --arch=${{ matrix.arch }}
-
-      - name: Package app (macOS)
-        if: matrix.platform == 'darwin'
-        run: npm run make -- --arch=${{ matrix.arch }}
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List output files
         run: |
@@ -88,16 +84,6 @@ jobs:
           path: |
             out/make/**/*.deb
             out/make/**/*.rpm
-            out/make/**/*.zip
-          if-no-files-found: warn
-
-      - name: Upload macOS artifacts
-        if: matrix.platform == 'darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pericode-${{ matrix.platform }}-${{ matrix.arch }}
-          path: |
-            out/make/**/*.dmg
             out/make/**/*.zip
           if-no-files-found: warn
 
@@ -128,7 +114,6 @@ jobs:
           # Find and copy all distributable files
           find artifacts -type f \( \
             -name "*.exe" -o \
-            -name "*.dmg" -o \
             -name "*.deb" -o \
             -name "*.rpm" -o \
             -name "*.zip" -o \
@@ -162,15 +147,11 @@ jobs:
             | Platform | Architecture | File |
             |----------|--------------|------|
             | Windows | x64 | `pericode-*-win32-x64-*.exe` |
-            | macOS | x64 (Intel) | `pericode-*-darwin-x64-*.dmg` |
-            | macOS | arm64 (Apple Silicon) | `pericode-*-darwin-arm64-*.dmg` |
             | Linux | x64 | `pericode-*-linux-x64-*.deb` / `.rpm` / `.zip` |
 
             ### Installation
 
             **Windows:** Run the `.exe` installer or extract the `.zip`
-
-            **macOS:** Open the `.dmg` and drag PeriCode to Applications
 
             **Linux (Debian/Ubuntu):** `sudo dpkg -i pericode-*.deb`
 

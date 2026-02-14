@@ -88,6 +88,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
         setCopilotAuth({ authenticated: true, username: pollResult.username });
         const models = await ipc.invoke("provider:getModels", "copilot");
         setCopilotModels(models);
+        // Reload settings so local state reflects the new copilot tokens
+        // (prevents stale state from overwriting tokens on next save)
+        const freshSettings = await ipc.invoke("settings:get");
+        setSettings(freshSettings);
       }
     } catch (err) {
       console.error("Copilot auth failed:", err);
@@ -102,6 +106,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ open, onClose }) =
       await ipc.invoke("copilot:logout");
       setCopilotAuth({ authenticated: false });
       setCopilotModels([]);
+      // Reload settings so local state reflects cleared tokens
+      const freshSettings = await ipc.invoke("settings:get");
+      setSettings(freshSettings);
     } catch (err) {
       console.error("Copilot logout failed:", err);
     }

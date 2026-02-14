@@ -14,6 +14,7 @@ import type {
   MessageContent,
   StreamMessage,
   ModelTokenUsage,
+  PermissionResponse,
 } from "../../src/types/ipc";
 
 // ── Types ──────────────────────────────────────────────────
@@ -42,6 +43,7 @@ interface ActiveAgent {
   threadId: string;
   projectId: string;
   kill: () => void;
+  writeStdin?: (data: Record<string, unknown>) => void;
   costUsd: number;
   tokensIn: number;
   tokensOut: number;
@@ -195,6 +197,26 @@ const NON_INTERACTIVE_SYSTEM_PROMPT =
   "DO NOT enter plan mode. Implement all requested changes directly. " +
   "Write code, create files, and make edits immediately without asking for confirmation.";
 
+function buildCopilotSystemPrompt(cwd: string): string {
+  return [
+    "You are a powerful agentic coding assistant. You MUST use the provided tools to accomplish tasks.",
+    "NEVER just describe what you would do — actually do it by calling tools.",
+    "",
+    "Available tools: Read (read files), Write (create/overwrite files), Edit (replace strings in files),",
+    "Bash (run shell commands), Glob (find files by pattern), Grep (search file contents).",
+    "",
+    "Workflow:",
+    "1. Use Glob/Grep/Read to understand the codebase first.",
+    "2. Use Edit/Write to make changes.",
+    "3. Use Bash to run tests, builds, or other commands as needed.",
+    "",
+    `Current working directory: ${cwd}`,
+    "",
+    "IMPORTANT: Always use tools. Do NOT just respond with text describing what you would do.",
+    "If the user asks you to change code, READ the file first, then EDIT it. Always act, never just explain.",
+  ].join("\n");
+}
+
 function resolvePermissionConfig(
   settings: AppSettings,
   configAllowedTools?: string[]
@@ -203,14 +225,15 @@ function resolvePermissionConfig(
     case "full":
       return { permissionMode: "bypassPermissions", allowedTools: DEFAULT_TOOLS };
     case "ask":
-      // Use pre-flight tool selection if provided, otherwise default tools
+      // Use "default" so the CLI emits control_request events for tool approval
       return {
-        permissionMode: "acceptEdits",
+        permissionMode: "default",
         allowedTools: configAllowedTools && configAllowedTools.length > 0
           ? configAllowedTools
           : DEFAULT_TOOLS,
       };
     case "acceptEdits":
+      return { permissionMode: "acceptEdits", allowedTools: DEFAULT_TOOLS };
     default:
       return { permissionMode: "bypassPermissions", allowedTools: DEFAULT_TOOLS };
   }
@@ -262,14 +285,31 @@ async function launchImmediate(
     }
   }
 
-  // Create thread in storage
+  // Start the agent in background
+  const project = storage.getProject(config.projectId);
+  const cwd = worktreePath ?? project?.path ?? process.cwd();
+
+  // Determine permission mode and tool list from settings
+  const appSettings = storage.getAppSettings();
+  const { permissionMode: resolvedMode, allowedTools: resolvedTools } =
+    resolvePermissionConfig(appSettings, config.allowedTools);
+
+  // Route to the appropriate provider
+  // config.provider / config.model always come from the NewAgentDialog UI
+  // (which already reads project settings as defaults)
+  const selectedProvider = config.provider ?? appSettings.providers?.defaultProvider ?? "claude";
+  const selectedModel = config.model ?? undefined;
+
+  // Create thread in storage (persist provider/model for follow-up messages)
   const thread = storage.createThread(
     threadId,
     config.projectId,
     title,
     null,
     worktreePath,
-    worktreeBranch
+    worktreeBranch,
+    selectedProvider,
+    selectedModel ?? null
   );
 
   // Store user message
@@ -283,19 +323,7 @@ async function launchImmediate(
     null
   );
 
-  // Start the agent in background
-  const project = storage.getProject(config.projectId);
-  const cwd = worktreePath ?? project?.path ?? process.cwd();
-
-  // Determine permission mode and tool list from settings
-  const appSettings = storage.getAppSettings();
-  const { permissionMode: resolvedMode, allowedTools: resolvedTools } =
-    resolvePermissionConfig(appSettings, config.allowedTools);
-
   const fullPrompt = buildPromptWithImages(config.prompt, config.imagePaths);
-
-  // Route to the appropriate provider
-  const selectedProvider = config.provider ?? appSettings.providers?.defaultProvider ?? "claude";
 
   if (selectedProvider === "copilot") {
     const adapter = providerRegistry.getAdapter("copilot");
@@ -310,7 +338,8 @@ async function launchImmediate(
     const copilotEvents = adapter.runAgent({
       prompt: fullPrompt,
       cwd,
-      provider: { provider: "copilot", model: config.model || appSettings.providers?.copilot?.defaultModel || "gpt-4.1" },
+      provider: { provider: "copilot", model: selectedModel || appSettings.providers?.copilot?.defaultModel || "gpt-4.1" },
+      systemPrompt: buildCopilotSystemPrompt(cwd),
       permissionMode: copilotPermission,
       allowedTools: resolvedTools,
       disallowedTools: DISALLOWED_TOOLS,
@@ -337,10 +366,10 @@ async function launchImmediate(
   }
 
   // Default: Claude CLI provider
-  const { events, kill } = spawnClaude({
+  const { events, kill, writeStdin } = spawnClaude({
     prompt: fullPrompt,
     cwd,
-    model: config.model,
+    model: selectedModel,
     permissionMode: resolvedMode,
     allowedTools: resolvedTools,
     disallowedTools: DISALLOWED_TOOLS,
@@ -352,6 +381,7 @@ async function launchImmediate(
     threadId,
     projectId: config.projectId,
     kill,
+    writeStdin,
     costUsd: 0,
     tokensIn: 0,
     tokensOut: 0,
@@ -556,6 +586,7 @@ function processResultEvent(
     }
   }
 
+  const primaryModel = deltaModelUsage ? Object.keys(deltaModelUsage)[0] ?? null : null;
   storage.addMessage(
     crypto.randomUUID(),
     threadId,
@@ -563,7 +594,8 @@ function processResultEvent(
     resultContent,
     deltaCost,
     deltaTokensIn,
-    deltaTokensOut
+    deltaTokensOut,
+    primaryModel
   );
 
   if (deltaModelUsage) {
@@ -642,6 +674,11 @@ async function runAgent(
           processResultEvent(threadId, config.projectId, message);
           break;
         }
+
+        case "control_request": {
+          handlePermissionRequest(threadId, message);
+          break;
+        }
       }
     }
 
@@ -688,6 +725,11 @@ async function runCopilotAgent(
 ): Promise<void> {
   let receivedCompletion = false;
   let fullText = "";
+  // Accumulate cost data from the adapter's cost events
+  let lastCostUsd = 0;
+  let lastTokensIn = 0;
+  let lastTokensOut = 0;
+  let lastModelUsage: Record<string, ModelTokenUsage> | undefined;
 
   try {
     for await (const msg of events) {
@@ -726,10 +768,10 @@ async function runCopilotAgent(
         }
 
         case "cost": {
-          const costUsd = msg.costUsd ?? 0;
-          const tokensIn = msg.tokensIn ?? 0;
-          const tokensOut = msg.tokensOut ?? 0;
-          const modelUsage = msg.modelUsage
+          lastCostUsd = msg.costUsd ?? 0;
+          lastTokensIn = msg.tokensIn ?? 0;
+          lastTokensOut = msg.tokensOut ?? 0;
+          lastModelUsage = msg.modelUsage
             ? Object.fromEntries(
                 Object.entries(msg.modelUsage).map(([model, u]) => [
                   model,
@@ -744,14 +786,14 @@ async function runCopilotAgent(
               )
             : undefined;
 
-          trackCost(threadId, config.projectId, costUsd, tokensIn, tokensOut, modelUsage);
+          trackCost(threadId, config.projectId, lastCostUsd, lastTokensIn, lastTokensOut, lastModelUsage);
 
           sendToRenderer("agent:message", threadId, {
             type: "cost",
-            costUsd,
-            tokensIn,
-            tokensOut,
-            modelUsage,
+            costUsd: lastCostUsd,
+            tokensIn: lastTokensIn,
+            tokensOut: lastTokensOut,
+            modelUsage: lastModelUsage,
           } as StreamMessage);
           break;
         }
@@ -766,35 +808,13 @@ async function runCopilotAgent(
         case "status": {
           if (msg.status === "completed") {
             receivedCompletion = true;
-
-            // Store the final message
-            if (fullText) {
-              storage.addMessage(
-                crypto.randomUUID(),
-                threadId,
-                "assistant",
-                [{ type: "text", text: fullText }],
-                0,
-                0,
-                0
-              );
-            }
-
-            storage.updateThreadStatus(threadId, "completed");
-            sendToRenderer("agent:status", threadId, "completed");
-            emitEvent({ type: "completed", threadId });
+            finalizeCopilotAgent(threadId, config, fullText, lastCostUsd, lastTokensIn, lastTokensOut, lastModelUsage, "completed");
           } else if (msg.status === "failed") {
-            storage.updateThreadStatus(threadId, "failed");
-            sendToRenderer("agent:status", threadId, "failed");
+            receivedCompletion = true;
             sendToRenderer("agent:error", threadId, {
               message: msg.errorMessage ?? "Copilot agent failed",
             });
-            emitEvent({
-              type: "failed",
-              threadId,
-              errorMessage: msg.errorMessage ?? "Copilot agent failed",
-            });
-            receivedCompletion = true;
+            finalizeCopilotAgent(threadId, config, fullText, lastCostUsd, lastTokensIn, lastTokensOut, lastModelUsage, "failed", msg.errorMessage);
           }
           break;
         }
@@ -802,21 +822,7 @@ async function runCopilotAgent(
     }
 
     if (!receivedCompletion) {
-      // Stream ended without explicit status — treat as completed
-      if (fullText) {
-        storage.addMessage(
-          crypto.randomUUID(),
-          threadId,
-          "assistant",
-          [{ type: "text", text: fullText }],
-          0,
-          0,
-          0
-        );
-      }
-      storage.updateThreadStatus(threadId, "completed");
-      sendToRenderer("agent:status", threadId, "completed");
-      emitEvent({ type: "completed", threadId });
+      finalizeCopilotAgent(threadId, config, fullText, lastCostUsd, lastTokensIn, lastTokensOut, lastModelUsage, "completed");
     }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
@@ -824,6 +830,7 @@ async function runCopilotAgent(
     storage.updateThreadStatus(threadId, "failed");
     sendToRenderer("agent:error", threadId, { message: errorMessage });
     sendToRenderer("agent:status", threadId, "failed");
+    sendToRenderer("agent:message", threadId, { type: "status", status: "failed" } as StreamMessage);
     emitEvent({ type: "failed", threadId, errorMessage });
   } finally {
     activeAgents.delete(threadId);
@@ -831,6 +838,128 @@ async function runCopilotAgent(
       logger.error("agent-orchestrator", "Queue processing error", err);
     });
   }
+}
+
+/** Finalize a Copilot agent run: store message, update status, notify renderer. */
+function finalizeCopilotAgent(
+  threadId: string,
+  config: AgentLaunchConfig,
+  fullText: string,
+  costUsd: number,
+  tokensIn: number,
+  tokensOut: number,
+  modelUsage: Record<string, ModelTokenUsage> | undefined,
+  status: "completed" | "failed",
+  errorMessage?: string,
+): void {
+  const modelId = config.model ?? (modelUsage ? Object.keys(modelUsage)[0] : null) ?? null;
+
+  // Store the final message with cost/model data
+  if (fullText) {
+    storage.addMessage(
+      crypto.randomUUID(),
+      threadId,
+      "assistant",
+      [{ type: "text", text: fullText }],
+      costUsd,
+      tokensIn,
+      tokensOut,
+      modelId
+    );
+  }
+
+  if (modelUsage) {
+    storage.addModelUsage(threadId, modelUsage);
+  }
+
+  storage.updateThreadStatus(threadId, status);
+  sendToRenderer("agent:status", threadId, status);
+  // Send agent:message(type:"status") so renderer can promote streaming blocks
+  sendToRenderer("agent:message", threadId, { type: "status", status } as StreamMessage);
+  emitEvent({
+    type: status === "completed" ? "completed" : "failed",
+    threadId,
+    costUsd,
+    ...(errorMessage ? { errorMessage } : {}),
+  });
+
+  logger.info(
+    "agent-orchestrator",
+    `Copilot agent ${threadId} finished: ${status} (${tokensIn}in / ${tokensOut}out, $${costUsd.toFixed(4)}, model: ${modelId})`
+  );
+}
+
+// ── Permission handling ────────────────────────────────────
+
+function handlePermissionRequest(
+  threadId: string,
+  event: import("./claude-cli").CliEvent
+): void {
+  if (!event.request_id || !event.request) return;
+
+  const toolName = event.request.tool_name ?? "Unknown";
+  const toolInput = event.request.input ?? {};
+
+  // Build a human-readable description
+  let description = "";
+  if (toolName === "Bash") {
+    description = (toolInput.command as string) ?? "";
+  } else if (toolName === "Write" || toolName === "Edit") {
+    description = (toolInput.file_path as string) ?? "";
+  } else if (toolName === "Read") {
+    description = (toolInput.file_path as string) ?? "";
+  }
+
+  logger.info(
+    "agent-orchestrator",
+    `Permission request for ${threadId}: ${toolName} (${event.request_id})`
+  );
+
+  sendToRenderer("agent:message", threadId, {
+    type: "permission_request",
+    requestId: event.request_id,
+    toolName,
+    toolInput,
+    toolDescription: description,
+  } as StreamMessage);
+}
+
+function respondToPermission(response: PermissionResponse): void {
+  const agent = activeAgents.get(response.threadId);
+  if (!agent?.writeStdin) {
+    logger.warn(
+      "agent-orchestrator",
+      `Cannot respond to permission: no writeStdin for ${response.threadId}`
+    );
+    return;
+  }
+
+  const controlResponse = response.allow
+    ? {
+        type: "control_response",
+        request_id: response.requestId,
+        response: {
+          subtype: "success",
+          response: { behavior: "allow" },
+        },
+      }
+    : {
+        type: "control_response",
+        request_id: response.requestId,
+        response: {
+          subtype: "success",
+          response: {
+            behavior: "deny",
+            message: response.message ?? "User denied this action",
+          },
+        },
+      };
+
+  agent.writeStdin(controlResponse);
+  logger.info(
+    "agent-orchestrator",
+    `Permission response for ${response.threadId}: ${response.allow ? "allow" : "deny"} (${response.requestId})`
+  );
 }
 
 // ── Public API ─────────────────────────────────────────────
@@ -893,19 +1022,19 @@ export const agentOrchestrator = {
     logger.info("agent-orchestrator", `Agent ${threadId} cancelled`);
   },
 
+  respondPermission(response: PermissionResponse): void {
+    respondToPermission(response);
+  },
+
   async sendMessage(threadId: string, message: string, imagePaths?: string[]): Promise<void> {
-    // Try in-memory registry first, then fall back to DB-persisted session ID
-    let sessionId = sessionRegistry.getSessionId(threadId);
-    if (!sessionId) {
-      const thread = storage.getThread(threadId);
-      sessionId = thread?.sessionId ?? null;
-      if (sessionId) {
-        sessionRegistry.register(threadId, sessionId);
-      }
+    const thread = storage.getThread(threadId);
+    if (!thread) {
+      throw new Error(`Thread not found: ${threadId}`);
     }
-    if (!sessionId) {
-      throw new Error(`No session found for thread ${threadId}. The session may have been lost.`);
-    }
+
+    const projectData = storage.getProject(thread.projectId);
+    const cwd = thread.worktreePath ?? projectData?.path ?? process.cwd();
+    const projectId = thread.projectId;
 
     storage.addMessage(
       crypto.randomUUID(),
@@ -917,20 +1046,80 @@ export const agentOrchestrator = {
       null
     );
 
-    const thread = storage.getThread(threadId);
-    const projectData = thread
-      ? storage.getProject(thread.projectId)
-      : null;
-    const cwd = thread?.worktreePath ?? projectData?.path ?? process.cwd();
-
     const appSettings = storage.getAppSettings();
     const { permissionMode: resolvedMode, allowedTools: resolvedTools } =
       resolvePermissionConfig(appSettings);
-    const model = appSettings.defaultModel || undefined;
 
     const fullPrompt = buildPromptWithImages(message, imagePaths);
 
-    const { events, kill } = spawnClaude({
+    // Use the thread's stored provider/model (set at launch time by user's explicit choice)
+    const threadProvider = thread.provider ?? "claude";
+
+    if (threadProvider === "copilot") {
+      // Route follow-up to Copilot adapter
+      const adapter = providerRegistry.getAdapter("copilot");
+      if (!adapter) throw new Error("Copilot provider not available");
+
+      const copilotPermission = resolvedMode === "bypassPermissions"
+        ? "full" as const
+        : resolvedMode === "acceptEdits"
+          ? "acceptEdits" as const
+          : "ask" as const;
+
+      const copilotModel = thread.model || appSettings.providers?.copilot?.defaultModel || "gpt-4.1";
+
+      const copilotEvents = adapter.runAgent({
+        prompt: fullPrompt,
+        cwd,
+        provider: { provider: "copilot", model: copilotModel },
+        systemPrompt: buildCopilotSystemPrompt(cwd),
+        permissionMode: copilotPermission,
+        allowedTools: resolvedTools,
+        disallowedTools: DISALLOWED_TOOLS,
+      });
+
+      let cancelled = false;
+      activeAgents.set(threadId, {
+        threadId,
+        projectId,
+        kill: () => { cancelled = true; adapter.cancel(); },
+        costUsd: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        modelUsage: {},
+      });
+      storage.updateThreadStatus(threadId, "running");
+      sendToRenderer("agent:status", threadId, "running");
+
+      // Re-use the Copilot agent runner — build a fake config for it
+      const fakeConfig: AgentLaunchConfig = {
+        projectId,
+        prompt: message,
+        provider: "copilot",
+        model: copilotModel,
+      };
+      runCopilotAgent(threadId, fakeConfig, copilotEvents).catch((err) => {
+        logger.error("agent-orchestrator", `Copilot sendMessage ${threadId} failed`, err);
+      });
+      return;
+    }
+
+    // Default: Claude CLI provider — resume the existing session
+    let sessionId = sessionRegistry.getSessionId(threadId);
+    if (!sessionId) {
+      sessionId = thread.sessionId ?? null;
+      if (sessionId) {
+        sessionRegistry.register(threadId, sessionId);
+      }
+    }
+    if (!sessionId) {
+      throw new Error(`No session found for thread ${threadId}. The session may have been lost.`);
+    }
+
+    // Use the thread's stored model, falling back to app default
+    const model = thread.model || appSettings.defaultModel || undefined;
+
+    const { events, kill, writeStdin } = spawnClaude({
       prompt: fullPrompt,
       cwd,
       resumeSessionId: sessionId,
@@ -942,11 +1131,11 @@ export const agentOrchestrator = {
       claudePath: getClaudeCliPath(),
     });
 
-    const projectId = thread?.projectId ?? "";
     activeAgents.set(threadId, {
       threadId,
       projectId,
       kill,
+      writeStdin,
       costUsd: 0,
       tokensIn: 0,
       tokensOut: 0,
@@ -970,6 +1159,8 @@ export const agentOrchestrator = {
         } else if (msg.type === "result") {
           receivedResult = true;
           processResultEvent(threadId, projectId, msg);
+        } else if (msg.type === "control_request") {
+          handlePermissionRequest(threadId, msg);
         }
       }
 

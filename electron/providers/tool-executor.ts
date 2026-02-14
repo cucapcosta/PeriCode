@@ -80,11 +80,21 @@ export async function executeTool(
   }
 }
 
+/** Strip null values from tool input (strict-mode schemas send null for optional params) */
+function stripNulls(input: ToolInput): ToolInput {
+  const result: ToolInput = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value != null) result[key] = value;
+  }
+  return result;
+}
+
 async function executeToolImpl(
   toolName: string,
-  toolInput: ToolInput,
+  rawToolInput: ToolInput,
   cwd: string
 ): Promise<string> {
+  const toolInput = stripNulls(rawToolInput);
   switch (toolName) {
     case "Read": {
       const result = readTool(

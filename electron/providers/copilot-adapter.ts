@@ -13,7 +13,7 @@ import type {
   ToolCallMessage,
   ModelTokenUsage,
 } from "./types";
-import { COPILOT_MODELS } from "./types";
+import { COPILOT_MODELS, COPILOT_PREMIUM_REQUEST_USD } from "./types";
 import { copilotAuth, getCopilotToken } from "./copilot-auth";
 import { executeTool, TOOL_DEFINITIONS } from "./tool-executor";
 
@@ -156,14 +156,38 @@ function buildChatTools() {
   }));
 }
 
-/** Build tool definitions in /responses format (flat) */
+/** Build tool definitions in /responses format (flat, strict-compatible) */
 function buildResponsesTools() {
-  return TOOL_DEFINITIONS.map((tool) => ({
-    type: "function" as const,
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.inputSchema,
-  }));
+  return TOOL_DEFINITIONS.map((tool) => {
+    const schema = tool.inputSchema;
+    const requiredSet = new Set(schema.required ?? []);
+    const allPropertyKeys = Object.keys(schema.properties ?? {});
+
+    // For strict mode: all properties must be in `required`, optional ones become nullable
+    const strictProperties: Record<string, unknown> = {};
+    for (const [key, prop] of Object.entries(schema.properties ?? {})) {
+      if (requiredSet.has(key)) {
+        strictProperties[key] = prop;
+      } else {
+        // Make optional properties nullable so strict mode accepts them
+        const p = prop as Record<string, unknown>;
+        strictProperties[key] = { ...p, type: [p.type as string, "null"] };
+      }
+    }
+
+    return {
+      type: "function" as const,
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: "object",
+        properties: strictProperties,
+        required: allPropertyKeys,
+        additionalProperties: false,
+      },
+      strict: true,
+    };
+  });
 }
 
 /** Parse SSE lines from a buffer, returning parsed lines and remaining buffer */
@@ -334,6 +358,8 @@ export class CopilotAdapter implements ProviderAdapter {
             }
           }
         }
+
+        logger.info("copilot-adapter", `Chat iteration ${iterationCount}: text=${currentContent.length}chars, toolCalls=${currentToolCalls.size}, finishReason=${finishReason}`);
 
         // Process tool calls
         if (finishReason === "tool_calls" && currentToolCalls.size > 0) {
@@ -510,6 +536,20 @@ export class CopilotAdapter implements ProviderAdapter {
                   totalTokensIn += event.response.usage.input_tokens;
                   totalTokensOut += event.response.usage.output_tokens;
                 }
+                // Fallback: extract function calls from response.output if not caught by stream events
+                if (event.response?.output && functionCalls.size === 0) {
+                  let idx = 0;
+                  for (const item of event.response.output) {
+                    if (item.type === "function_call" && item.name && item.call_id) {
+                      functionCalls.set(idx, {
+                        callId: item.call_id,
+                        name: item.name,
+                        arguments: item.arguments ?? "{}",
+                      });
+                      idx++;
+                    }
+                  }
+                }
                 break;
               }
 
@@ -520,6 +560,8 @@ export class CopilotAdapter implements ProviderAdapter {
             }
           }
         }
+
+        logger.info("copilot-adapter", `Iteration ${iterationCount}: text=${currentText.length}chars, functionCalls=${functionCalls.size}, responseCompleted=${responseCompleted}`);
 
         // Process any function calls
         if (functionCalls.size > 0) {
@@ -589,19 +631,26 @@ export class CopilotAdapter implements ProviderAdapter {
     tokensIn: number,
     tokensOut: number
   ): Generator<ToolCallMessage, void, undefined> {
+    // Estimate cost from premium multiplier
+    const modelDef = COPILOT_MODELS.find((m) => m.id === model);
+    const multiplier = modelDef?.premiumMultiplier ?? 1;
+    // Copilot charges per premium request ($0.04 per 1x multiplier)
+    // Rough estimate: 1 request = 1 premium request * multiplier
+    const estimatedCost = COPILOT_PREMIUM_REQUEST_USD * multiplier;
+
     const modelUsage: Record<string, ModelTokenUsage> = {
       [model]: {
         inputTokens: tokensIn,
         outputTokens: tokensOut,
         cacheReadInputTokens: 0,
         cacheCreationInputTokens: 0,
-        costUsd: 0,
+        costUsd: estimatedCost,
       },
     };
 
     yield {
       type: "cost",
-      costUsd: 0,
+      costUsd: estimatedCost,
       tokensIn,
       tokensOut,
       modelUsage,

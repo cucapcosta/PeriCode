@@ -154,6 +154,26 @@ export const storage = {
 
     db.run("PRAGMA foreign_keys = ON;");
     db.exec(SCHEMA);
+
+    // Migration: add model_id column to messages if not present
+    try {
+      db.exec("ALTER TABLE messages ADD COLUMN model_id TEXT");
+    } catch {
+      // Column already exists - ignore
+    }
+
+    // Migration: add provider/model columns to threads if not present
+    try {
+      db.exec("ALTER TABLE threads ADD COLUMN provider TEXT");
+    } catch {
+      // Column already exists - ignore
+    }
+    try {
+      db.exec("ALTER TABLE threads ADD COLUMN model TEXT");
+    } catch {
+      // Column already exists - ignore
+    }
+
     saveToFile();
   },
 
@@ -238,16 +258,17 @@ export const storage = {
 
   createThread(
     id: string, projectId: string, title: string | null,
-    sessionId: string | null, worktreePath: string | null, worktreeBranch: string | null
+    sessionId: string | null, worktreePath: string | null, worktreeBranch: string | null,
+    provider?: string | null, model?: string | null
   ): ThreadInfo {
     const now = new Date().toISOString();
     getDb().run(
-      `INSERT INTO threads (id, project_id, title, status, session_id, worktree_path, worktree_branch, created_at, updated_at)
-       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
-      [id, projectId, title, sessionId, worktreePath, worktreeBranch, now, now]
+      `INSERT INTO threads (id, project_id, title, status, session_id, worktree_path, worktree_branch, provider, model, created_at, updated_at)
+       VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?)`,
+      [id, projectId, title, sessionId, worktreePath, worktreeBranch, provider ?? null, model ?? null, now, now]
     );
     saveToFile();
-    return { id, projectId, title, status: "running", sessionId, worktreePath, worktreeBranch, createdAt: now, updatedAt: now };
+    return { id, projectId, title, status: "running", sessionId, worktreePath, worktreeBranch, provider: (provider as import("../../src/types/ipc").ProviderType) ?? null, model: model ?? null, createdAt: now, updatedAt: now };
   },
 
   getThread(id: string): ThreadInfo | null {
@@ -271,6 +292,11 @@ export const storage = {
 
   updateThreadWorktree(id: string, worktreePath: string | null, worktreeBranch: string | null): void {
     getDb().run("UPDATE threads SET worktree_path = ?, worktree_branch = ?, updated_at = ? WHERE id = ?", [worktreePath, worktreeBranch, new Date().toISOString(), id]);
+    saveToFile();
+  },
+
+  updateThreadProvider(id: string, provider: string | null, model: string | null): void {
+    getDb().run("UPDATE threads SET provider = ?, model = ?, updated_at = ? WHERE id = ?", [provider, model, new Date().toISOString(), id]);
     saveToFile();
   },
 
@@ -308,17 +334,18 @@ export const storage = {
   addMessage(
     id: string, threadId: string, role: Message["role"],
     content: MessageContent[], costUsd: number | null,
-    tokensIn: number | null, tokensOut: number | null
+    tokensIn: number | null, tokensOut: number | null,
+    modelId?: string | null,
   ): Message {
     const now = new Date().toISOString();
     getDb().run(
-      `INSERT INTO messages (id, thread_id, role, content, cost_usd, tokens_in, tokens_out, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, threadId, role, JSON.stringify(content), costUsd, tokensIn, tokensOut, now]
+      `INSERT INTO messages (id, thread_id, role, content, cost_usd, tokens_in, tokens_out, model_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, threadId, role, JSON.stringify(content), costUsd, tokensIn, tokensOut, modelId ?? null, now]
     );
     getDb().run("UPDATE threads SET updated_at = ? WHERE id = ?", [now, threadId]);
     saveToFile();
-    return { id, threadId, role, content, costUsd, tokensIn, tokensOut, createdAt: now };
+    return { id, threadId, role, content, costUsd, tokensIn, tokensOut, modelId: modelId ?? null, createdAt: now };
   },
 
   // ── Skills ────────────────────────────────────────────────
@@ -645,6 +672,8 @@ function mapThread(row: Record<string, unknown>): ThreadInfo {
     sessionId: (row.session_id as string) || null,
     worktreePath: (row.worktree_path as string) || null,
     worktreeBranch: (row.worktree_branch as string) || null,
+    provider: (row.provider as string as import("../../src/types/ipc").ProviderType) || null,
+    model: (row.model as string) || null,
     createdAt: row.created_at as string, updatedAt: row.updated_at as string,
   };
 }
@@ -654,8 +683,11 @@ function mapMessage(row: Record<string, unknown>): Message {
     id: row.id as string, threadId: row.thread_id as string,
     role: row.role as Message["role"],
     content: JSON.parse(row.content as string) as MessageContent[],
-    costUsd: (row.cost_usd as number) || null, tokensIn: (row.tokens_in as number) || null,
-    tokensOut: (row.tokens_out as number) || null, createdAt: row.created_at as string,
+    costUsd: row.cost_usd != null ? (row.cost_usd as number) : null,
+    tokensIn: row.tokens_in != null ? (row.tokens_in as number) : null,
+    tokensOut: row.tokens_out != null ? (row.tokens_out as number) : null,
+    modelId: (row.model_id as string) || null,
+    createdAt: row.created_at as string,
   };
 }
 

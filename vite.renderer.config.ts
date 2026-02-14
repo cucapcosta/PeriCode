@@ -9,6 +9,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  define: {
+    __CI_BUILD__: JSON.stringify(!!process.env.CI_BUILD),
+  },
   css: {
     postcss: "./postcss.config.js",
   },

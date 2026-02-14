@@ -7,7 +7,8 @@ import { ThreadNotesPanel } from "@/components/agents/ThreadNotesPanel";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ToolUseBlock } from "@/components/agents/ToolUseBlock";
 import { ipc } from "@/lib/ipc-client";
-import type { Skill, StreamingContentBlock, MessageContent, ImageAttachment } from "@/types/ipc";
+import type { Skill, StreamingContentBlock, MessageContent, ImageAttachment, ProviderType, ModelInfo } from "@/types/ipc";
+import { getLatestModels } from "@/lib/models";
 import { estimateCost, getModelPricing } from "@/lib/model-pricing";
 
 function relativeTime(dateStr: string): string {
@@ -59,10 +60,12 @@ export const ThreadView: React.FC = () => {
     messages,
     streamingContent,
     threadCosts,
+    pendingPermissions,
     errors,
     threads,
     sendMessage,
     cancelAgent,
+    respondPermission,
   } = useAgentStore();
   const [input, setInput] = useState("");
   const [showDiff, setShowDiff] = useState(false);
@@ -87,7 +90,7 @@ export const ThreadView: React.FC = () => {
   const slashCommands = [
     { name: "code", description: "Open project in VSCode" },
     { name: "build", description: "Run project build command" },
-    ...(import.meta.env.DEV ? [{ name: "rebuild", description: "Rebuild and restart PeriCode" }] : []),
+    ...(!__CI_BUILD__ ? [{ name: "rebuild", description: "Rebuild and restart PeriCode" }] : []),
     { name: "status", description: "Show git status" },
     { name: "add", description: "Stage all changes (git add .)" },
     { name: "commit", description: "Commit staged changes" },
@@ -95,7 +98,7 @@ export const ThreadView: React.FC = () => {
     { name: "pull", description: "Pull from remote" },
     { name: "checkout", description: "Switch branch" },
     { name: "branch", description: "List branches" },
-    ...(import.meta.env.DEV ? [{ name: "publish", description: "Publish release (version)" }] : []),
+    ...(!__CI_BUILD__ ? [{ name: "publish", description: "Publish release (version)" }] : []),
   ];
   const [buildOutput, setBuildOutput] = useState<{ success: boolean; output: string } | null>(null);
   const [gitOutput, setGitOutput] = useState<{ type: string; success: boolean; message: string } | null>(null);
@@ -104,6 +107,9 @@ export const ThreadView: React.FC = () => {
   const [versionInput, setVersionInput] = useState("");
   const [commandSuggestions, setCommandSuggestions] = useState<typeof slashCommands>([]);
   const [showCommandSuggestions, setShowCommandSuggestions] = useState(false);
+  const [copilotModels, setCopilotModels] = useState<ModelInfo[]>([]);
+  const [copilotAvailable, setCopilotAvailable] = useState(false);
+  const [showModelPicker, setShowModelPicker] = useState(false);
 
   const noteContent = useNotesStore((s) => activeThreadId ? s.notes.get(activeThreadId) : undefined);
   const activeThread = threads.find((t) => t.id === activeThreadId);
@@ -144,18 +150,47 @@ export const ThreadView: React.FC = () => {
   };
 
   const shortModelName = (modelId: string): string => {
+    // Claude models: claude-sonnet-4-5-20250929 -> sonnet-4.5
     const m = modelId.match(/claude-(\w+)-([\d]+(?:-[\d]+)?)-\d{8}/);
     if (m) {
       const family = m[1];
       const version = m[2].replace("-", ".");
       return `${family}-${version}`;
     }
-    return modelId.replace(/^claude-/, "");
+    // Claude models without date: claude-opus-4.6 -> opus-4.6
+    if (modelId.startsWith("claude-")) {
+      return modelId.replace(/^claude-/, "");
+    }
+    // Other models: return as-is (gpt-4.1, o3-mini, etc.)
+    return modelId;
   };
 
-  // Load skills once
+  const currentProvider: ProviderType = (activeThread?.provider as ProviderType) ?? "claude";
+  const currentModel = activeThread?.model ?? "sonnet";
+  const latestModels = getLatestModels();
+
+  const handleChangeModel = async (provider: ProviderType, model: string) => {
+    if (!activeThreadId) return;
+    await ipc.invoke("thread:updateProvider", activeThreadId, provider, model);
+    // Update local thread state so UI reflects the change immediately
+    useAgentStore.setState((state) => ({
+      threads: state.threads.map((t) =>
+        t.id === activeThreadId ? { ...t, provider, model } : t
+      ),
+    }));
+    setShowModelPicker(false);
+  };
+
+  // Load skills and copilot models once
   useEffect(() => {
     ipc.invoke("skill:list").then(setSkills).catch(() => {});
+    // Always load copilot models (static list) and check auth status
+    ipc.invoke("provider:list").then((providers) => {
+      const copilot = providers.find((p) => p.id === "copilot");
+      setCopilotAvailable(copilot?.available ?? false);
+    }).catch(() => {});
+    // Load copilot models regardless of auth - they're a static list
+    ipc.invoke("provider:getModels", "copilot").then(setCopilotModels).catch(() => {});
   }, []);
 
   // Track if user is near the bottom of the scroll container
@@ -684,17 +719,99 @@ export const ThreadView: React.FC = () => {
     <div className="flex-1 flex flex-col min-h-0">
       {/* Thread header */}
       <div className="px-4 py-2 border-b border-border flex items-center gap-2 flex-shrink-0 min-w-0">
-        <span
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${
-            activeThread.status === "running"
-              ? "bg-green-500 animate-pulse"
-              : activeThread.status === "completed"
-                ? "bg-blue-500"
-                : activeThread.status === "failed"
-                  ? "bg-red-500"
-                  : "bg-yellow-500"
-          }`}
-        />
+        {/* Model selector - leftmost after status dot */}
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={() => setShowModelPicker(!showModelPicker)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium border border-border/60 bg-background hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+            title="Change model"
+          >
+            <span className={`w-2 h-2 rounded-full ${
+              currentProvider === "copilot" ? "bg-green-400" :
+              activeThread.status === "running" ? "bg-green-500 animate-pulse" :
+              activeThread.status === "completed" ? "bg-blue-500" :
+              activeThread.status === "failed" ? "bg-red-500" : "bg-yellow-500"
+            }`} />
+            {currentProvider === "copilot"
+              ? currentModel
+              : latestModels.find((m) => m.alias === currentModel)?.name ?? currentModel}
+            <svg className="w-3 h-3 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          {showModelPicker && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowModelPicker(false)} />
+              <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl w-56 py-1 max-h-80 overflow-y-auto">
+                {/* Claude models */}
+                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Claude CLI
+                </div>
+                {latestModels.map((m) => (
+                  <button
+                    key={m.alias}
+                    onClick={() => handleChangeModel("claude", m.alias)}
+                    className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-accent transition-colors ${
+                      currentProvider === "claude" && currentModel === m.alias
+                        ? "text-primary font-medium bg-primary/5"
+                        : "text-foreground"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      m.family === "opus" ? "bg-purple-400" :
+                      m.family === "sonnet" ? "bg-blue-400" : "bg-green-400"
+                    }`} />
+                    {m.name}
+                    {currentProvider === "claude" && currentModel === m.alias && (
+                      <svg className="w-3 h-3 ml-auto text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+
+                {/* Copilot models */}
+                {copilotModels.length > 0 && (
+                  <>
+                    <div className="border-t border-border my-1" />
+                    <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      GitHub Copilot
+                      {!copilotAvailable && (
+                        <span className="text-[9px] text-yellow-400 font-normal normal-case">(not connected)</span>
+                      )}
+                    </div>
+                    {copilotModels.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => handleChangeModel("copilot", m.id)}
+                        disabled={!copilotAvailable}
+                        className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-accent transition-colors ${
+                          !copilotAvailable ? "opacity-40 cursor-not-allowed" :
+                          currentProvider === "copilot" && currentModel === m.id
+                            ? "text-primary font-medium bg-primary/5"
+                            : "text-foreground"
+                        }`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                        {m.name}
+                        {m.premiumMultiplier === 0 && (
+                          <span className="text-[9px] text-green-400 ml-auto">Free</span>
+                        )}
+                        {currentProvider === "copilot" && currentModel === m.id && (
+                          <svg className="w-3 h-3 ml-auto text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         <h2 className="text-sm font-semibold text-foreground truncate min-w-0 flex-1">
           {activeThread.title || "Untitled Thread"}
         </h2>
@@ -803,13 +920,21 @@ export const ThreadView: React.FC = () => {
                   {relativeTime(msg.createdAt)}
                 </span>
                 {/* Cost info for assistant messages */}
-                {msg.role === "assistant" && (msg.costUsd !== null || msg.tokensIn !== null || msg.tokensOut !== null) && (
-                  <span className="text-[10px] opacity-60 font-mono bg-black/10 px-1.5 py-0.5 rounded">
-                    {msg.tokensIn !== null && msg.tokensOut !== null && (
-                      <span className="text-blue-300">{formatTokens(msg.tokensIn)}in / {formatTokens(msg.tokensOut)}out</span>
+                {msg.role === "assistant" && (
+                  (msg.modelId) ||
+                  (msg.tokensIn !== null && msg.tokensIn > 0) ||
+                  (msg.tokensOut !== null && msg.tokensOut > 0) ||
+                  (msg.costUsd !== null && msg.costUsd > 0)
+                ) && (
+                  <span className="text-[10px] font-mono bg-black/15 px-1.5 py-0.5 rounded inline-flex items-center gap-0.5">
+                    {msg.modelId && (
+                      <span className="text-purple-300 font-semibold">{shortModelName(msg.modelId)}</span>
+                    )}
+                    {msg.tokensIn !== null && msg.tokensIn > 0 && msg.tokensOut !== null && msg.tokensOut > 0 && (
+                      <span className="text-blue-300/80">{msg.modelId ? " · " : ""}{formatTokens(msg.tokensIn)}in / {formatTokens(msg.tokensOut)}out</span>
                     )}
                     {msg.costUsd !== null && msg.costUsd > 0 && (
-                      <span className="text-green-300">{msg.tokensIn !== null ? " · " : ""}{formatCost(msg.costUsd)}</span>
+                      <span className="text-green-300">{(msg.tokensIn !== null && msg.tokensIn > 0) || msg.modelId ? " · " : ""}{formatCost(msg.costUsd)}</span>
                     )}
                   </span>
                 )}
@@ -831,6 +956,46 @@ export const ThreadView: React.FC = () => {
 
         {/* Activity indicator */}
         {showActivity && <ActivityIndicator />}
+
+        {/* Permission request prompts */}
+        {activeThreadId && [...pendingPermissions.values()]
+          .filter((p) => p.threadId === activeThreadId)
+          .map((perm) => (
+            <div
+              key={perm.requestId}
+              className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 animate-fade-in-up"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-yellow-400 text-sm font-semibold">Permission Required</span>
+                <span className="text-xs font-mono text-muted-foreground bg-black/20 px-1.5 py-0.5 rounded">{perm.toolName}</span>
+              </div>
+              {perm.toolDescription && (
+                <pre className="text-xs text-foreground/80 font-mono whitespace-pre-wrap break-all bg-black/10 rounded px-2 py-1.5 mb-3 max-h-32 overflow-y-auto">
+                  {perm.toolDescription}
+                </pre>
+              )}
+              {!perm.toolDescription && perm.toolInput && Object.keys(perm.toolInput).length > 0 && (
+                <pre className="text-xs text-foreground/80 font-mono whitespace-pre-wrap break-all bg-black/10 rounded px-2 py-1.5 mb-3 max-h-32 overflow-y-auto">
+                  {JSON.stringify(perm.toolInput, null, 2)}
+                </pre>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => respondPermission(perm.threadId, perm.requestId, true)}
+                  className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  Allow
+                </button>
+                <button
+                  onClick={() => respondPermission(perm.threadId, perm.requestId, false, "User denied this action")}
+                  className="px-3 py-1.5 rounded-md bg-red-600/80 text-white text-sm font-medium hover:bg-red-700 transition-colors"
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          ))
+        }
 
         {/* Error banner */}
         {threadError && activeThread?.status === "failed" && (

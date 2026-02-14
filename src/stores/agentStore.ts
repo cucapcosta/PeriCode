@@ -21,6 +21,15 @@ interface PendingMessageCost {
   costUsd: number;
   tokensIn: number;
   tokensOut: number;
+  modelId: string | null;
+}
+
+export interface PendingPermission {
+  threadId: string;
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  toolDescription: string;
 }
 
 interface AgentState {
@@ -29,6 +38,7 @@ interface AgentState {
   messages: Map<string, Message[]>;
   streamingContent: Map<string, StreamingContentBlock[]>;
   threadCosts: Map<string, ThreadCostState>;
+  pendingPermissions: Map<string, PendingPermission>;
   loading: boolean;
 
   loadThreads: (projectId: string) => Promise<void>;
@@ -38,6 +48,7 @@ interface AgentState {
   sendMessage: (threadId: string, message: string, imagePaths?: string[]) => Promise<void>;
   setActiveThread: (threadId: string | null) => void;
   loadMessages: (threadId: string) => Promise<void>;
+  respondPermission: (threadId: string, requestId: string, allow: boolean, message?: string) => Promise<void>;
 
   handleStreamMessage: (threadId: string, message: StreamMessage) => void;
   handleStatusChange: (threadId: string, status: string) => void;
@@ -55,6 +66,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   messages: new Map(),
   streamingContent: new Map(),
   threadCosts: new Map(),
+  pendingPermissions: new Map(),
   errors: new Map(),
   loading: false,
 
@@ -82,6 +94,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       costUsd: null,
       tokensIn: null,
       tokensOut: null,
+      modelId: null,
       createdAt: new Date().toISOString(),
     };
     const msgs = new Map(get().messages);
@@ -127,6 +140,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       costUsd: null,
       tokensIn: null,
       tokensOut: null,
+      modelId: null,
       createdAt: new Date().toISOString(),
       imagePaths: imagePaths,
     };
@@ -136,6 +150,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set({ messages: msgs });
 
     await ipc.invoke("agent:sendMessage", threadId, message, imagePaths);
+  },
+
+  respondPermission: async (threadId: string, requestId: string, allow: boolean, message?: string) => {
+    await ipc.invoke("agent:respondPermission", { threadId, requestId, allow, message });
+    // Remove the pending permission
+    const perms = new Map(get().pendingPermissions);
+    perms.delete(requestId);
+    set({ pendingPermissions: perms });
   },
 
   setActiveThread: (threadId: string | null) => {
@@ -227,6 +249,18 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       set({ streamingContent: streaming });
     }
 
+    if (message.type === "permission_request" && message.requestId && message.toolName) {
+      const perms = new Map(get().pendingPermissions);
+      perms.set(message.requestId, {
+        threadId,
+        requestId: message.requestId,
+        toolName: message.toolName,
+        toolInput: message.toolInput ?? {},
+        toolDescription: message.toolDescription ?? "",
+      });
+      set({ pendingPermissions: perms });
+    }
+
     if (message.type === "cost") {
       const costs = new Map(get().threadCosts);
       const current = costs.get(threadId) || {
@@ -259,8 +293,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       costs.set(threadId, { ...current });
       set({ threadCosts: costs });
 
-      // Store the cost info for the pending message
-      pendingMessageCosts.set(threadId, { costUsd, tokensIn, tokensOut });
+      // Store the cost info for the pending message, extract primary model
+      const modelId = message.modelUsage ? Object.keys(message.modelUsage)[0] ?? null : null;
+      const prev = pendingMessageCosts.get(threadId);
+      pendingMessageCosts.set(threadId, { costUsd, tokensIn, tokensOut, modelId: modelId ?? prev?.modelId ?? null });
     }
 
     if (message.type === "status" && (message.status === "completed" || message.status === "failed")) {
@@ -300,6 +336,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             costUsd: pendingCost?.costUsd ?? null,
             tokensIn: pendingCost?.tokensIn ?? null,
             tokensOut: pendingCost?.tokensOut ?? null,
+            modelId: pendingCost?.modelId ?? null,
             createdAt: new Date().toISOString(),
           };
           msgs.set(threadId, [...existing, finalMsg]);

@@ -2,7 +2,7 @@ import { ipcMain } from "electron";
 import { agentOrchestrator } from "../services/agent-orchestrator";
 import { storage } from "../services/storage";
 import { sessionRegistry } from "../services/session-registry";
-import type { AgentLaunchConfig, ThreadInfo, ThreadDetail, Message, ThreadCostSummary } from "../../src/types/ipc";
+import type { AgentLaunchConfig, ThreadInfo, ThreadDetail, Message, ThreadCostSummary, PermissionResponse } from "../../src/types/ipc";
 
 export function registerAgentHandlers(): void {
   ipcMain.handle(
@@ -28,6 +28,13 @@ export function registerAgentHandlers(): void {
     "agent:sendMessage",
     async (_event, threadId: string, message: string, imagePaths?: string[]): Promise<void> => {
       await agentOrchestrator.sendMessage(threadId, message, imagePaths);
+    }
+  );
+
+  ipcMain.handle(
+    "agent:respondPermission",
+    (_event, response: PermissionResponse): void => {
+      agentOrchestrator.respondPermission(response);
     }
   );
 
@@ -61,6 +68,13 @@ export function registerAgentHandlers(): void {
     sessionRegistry.remove(threadId);
     storage.deleteThread(threadId);
   });
+
+  ipcMain.handle(
+    "thread:updateProvider",
+    (_event, threadId: string, provider: string, model: string): void => {
+      storage.updateThreadProvider(threadId, provider, model);
+    }
+  );
 
   ipcMain.handle("thread:fork", (_event, _threadId: string): ThreadInfo => {
     // Fork will be fully implemented in Phase 2 with worktrees

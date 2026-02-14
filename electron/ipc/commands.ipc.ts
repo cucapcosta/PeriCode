@@ -20,8 +20,8 @@ export function registerCommandHandlers(): void {
     }
   );
 
-  // Dev-only: rebuild is only available when running from source (not packaged)
-  if (!app.isPackaged) {
+  // Dev-only: rebuild is excluded from CI release builds (injected at build time)
+  if (!__CI_BUILD__) {
   ipcMain.handle(
     "command:rebuild",
     async (_event, projectPath: string): Promise<void> => {

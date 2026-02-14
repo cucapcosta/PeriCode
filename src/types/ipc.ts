@@ -28,6 +28,8 @@ export interface ThreadInfo {
   sessionId: string | null;
   worktreePath: string | null;
   worktreeBranch: string | null;
+  provider: ProviderType | null;
+  model: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,6 +46,7 @@ export interface Message {
   costUsd: number | null;
   tokensIn: number | null;
   tokensOut: number | null;
+  modelId: string | null;
   createdAt: string;
   imagePaths?: string[];
 }
@@ -88,7 +91,7 @@ export interface StreamingContentBlock {
 }
 
 export interface StreamMessage {
-  type: "text" | "tool_use" | "tool_result" | "cost" | "status";
+  type: "text" | "tool_use" | "tool_result" | "cost" | "status" | "permission_request";
   text?: string;
   toolName?: string;
   toolInput?: Record<string, unknown>;
@@ -99,6 +102,16 @@ export interface StreamMessage {
   tokensOut?: number;
   modelUsage?: Record<string, ModelTokenUsage>;
   status?: AgentStatus;
+  // Permission request fields (type === "permission_request")
+  requestId?: string;
+  toolDescription?: string;
+}
+
+export interface PermissionResponse {
+  threadId: string;
+  requestId: string;
+  allow: boolean;
+  message?: string;
 }
 
 export interface ThreadCostSummary {
@@ -356,6 +369,10 @@ export interface IPCInvokeChannels {
     args: [threadId: string, message: string, imagePaths?: string[]];
     return: void;
   };
+  "agent:respondPermission": {
+    args: [response: PermissionResponse];
+    return: void;
+  };
   "agent:getRunning": { args: []; return: ThreadInfo[] };
 
   // Threads
@@ -365,6 +382,10 @@ export interface IPCInvokeChannels {
   "thread:delete": { args: [threadId: string]; return: void };
   "thread:fork": { args: [threadId: string]; return: ThreadInfo };
   "thread:getCostSummary": { args: [threadId: string]; return: ThreadCostSummary };
+  "thread:updateProvider": {
+    args: [threadId: string, provider: ProviderType, model: string];
+    return: void;
+  };
 
   // Thread Notes
   "notes:get": { args: [threadId: string]; return: string | null };
