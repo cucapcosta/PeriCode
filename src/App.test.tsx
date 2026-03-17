@@ -1,17 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { App } from "./App";
-
-// Mock the electronAPI for tests
-beforeEach(() => {
-  window.electronAPI = {
-    invoke: vi.fn().mockResolvedValue([]),
-    on: vi.fn(),
-    once: vi.fn(),
-    removeListener: vi.fn(),
-    removeAllListeners: vi.fn(),
-  };
-});
 
 describe("App", () => {
   it("renders the app title", () => {
@@ -24,10 +13,8 @@ describe("App", () => {
     expect(screen.getByText("Welcome to PeriCode")).toBeInTheDocument();
   });
 
-  it("renders the sidebar subtitle", () => {
+  it("renders the no projects message", () => {
     render(<App />);
-    expect(
-      screen.getByText("Multi-agent command center")
-    ).toBeInTheDocument();
+    expect(screen.getByText("No projects yet")).toBeInTheDocument();
   });
 });

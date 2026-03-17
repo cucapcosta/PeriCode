@@ -2,7 +2,7 @@
 
 Uma ferramenta periquitante para desenvolvimento com Claude.
 
-PeriCode is a multi-agent command center that wraps the Claude Code CLI in an Electron desktop application, providing a visual interface for managing AI-assisted development workflows.
+PeriCode is a multi-agent command center that wraps the Claude Code CLI in a Tauri desktop application, providing a visual interface for managing AI-assisted development workflows.
 
 ## Features
 
@@ -34,33 +34,21 @@ PeriCode is a multi-agent command center that wraps the Claude Code CLI in an El
 
 ### Windows
 
-**Option 1: Installer (recommended)**
-1. Download `pericode-X.X.X-win32-x64-Setup.exe` from [Releases](https://github.com/cucapcosta/pericode/releases)
+**Option 1: NSIS Installer (recommended)**
+1. Download `PeriCode_X.X.X_x64-setup.exe` from [Releases](https://github.com/cucapcosta/pericode/releases)
 2. Run the installer
 3. Launch PeriCode from Start Menu
 
-**Option 2: Portable**
-1. Download `pericode-X.X.X-win32-x64.zip` from [Releases](https://github.com/cucapcosta/pericode/releases)
-2. Extract to desired location
-3. Run `pericode.exe`
+**Option 2: MSI Installer**
+1. Download `PeriCode_X.X.X_x64_en-US.msi` from [Releases](https://github.com/cucapcosta/pericode/releases)
+2. Run the `.msi` installer
+3. Launch PeriCode from Start Menu
 
 ---
 
 ### macOS
 
-**Intel (x64)**
-1. Download `pericode-X.X.X-darwin-x64.dmg` from [Releases](https://github.com/cucapcosta/pericode/releases)
-2. Open the `.dmg` file
-3. Drag PeriCode to Applications folder
-4. Launch from Applications
-
-**Apple Silicon (arm64)**
-1. Download `pericode-X.X.X-darwin-arm64.dmg` from [Releases](https://github.com/cucapcosta/pericode/releases)
-2. Open the `.dmg` file
-3. Drag PeriCode to Applications folder
-4. Launch from Applications
-
-> Note: On first launch, you may need to right-click and select "Open" to bypass Gatekeeper.
+> macOS builds are not currently available via CI. See [Building from Source](#building-from-source) below.
 
 ---
 
@@ -81,79 +69,29 @@ sudo apt-get install -f
 #### Fedora / RHEL / CentOS
 ```bash
 # Download the .rpm package
-wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/pericode-X.X.X.x86_64.rpm
+wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/pericode-X.X.X-1.x86_64.rpm
 
 # Install
-sudo rpm -i pericode-X.X.X.x86_64.rpm
+sudo rpm -i pericode-X.X.X-1.x86_64.rpm
 # or with dnf
-sudo dnf install pericode-X.X.X.x86_64.rpm
+sudo dnf install pericode-X.X.X-1.x86_64.rpm
+```
+
+#### AppImage (any distro)
+```bash
+# Download the AppImage
+wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/PeriCode_X.X.X_amd64.AppImage
+
+# Make executable and run
+chmod +x PeriCode_X.X.X_amd64.AppImage
+./PeriCode_X.X.X_amd64.AppImage
 ```
 
 #### Arch Linux
-
-**Option 1: Extract from zip**
 ```bash
-# Download and extract
-wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/pericode-X.X.X-linux-x64.zip
-unzip pericode-X.X.X-linux-x64.zip -d ~/.local/share/pericode
+# Option 1: Use the AppImage (see above)
 
-# Create symlink
-mkdir -p ~/.local/bin
-ln -s ~/.local/share/pericode/pericode ~/.local/bin/pericode
-
-# Make sure ~/.local/bin is in your PATH
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-**Option 2: PKGBUILD (build from source)**
-```bash
-# Clone the repo
-git clone https://github.com/cucapcosta/pericode.git
-cd pericode/arch
-
-# Build and install
-makepkg -si
-```
-
-**Option 3: PKGBUILD-bin (prebuilt binary)**
-```bash
-# Clone the repo
-git clone https://github.com/cucapcosta/pericode.git
-cd pericode/arch
-
-# Use the binary PKGBUILD
-cp PKGBUILD-bin PKGBUILD
-
-# Update pkgver to match the release version
-# Edit PKGBUILD and change pkgver=X.X.X
-
-# Build and install
-makepkg -si
-```
-
-#### Other distributions (generic)
-```bash
-# Download the zip
-wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/pericode-X.X.X-linux-x64.zip
-
-# Extract
-sudo unzip pericode-X.X.X-linux-x64.zip -d /opt/pericode
-
-# Create launcher
-sudo ln -s /opt/pericode/pericode /usr/local/bin/pericode
-
-# Create desktop entry (optional)
-cat > ~/.local/share/applications/pericode.desktop << EOF
-[Desktop Entry]
-Name=PeriCode
-Comment=Multi-agent command center for Claude Code
-Exec=/opt/pericode/pericode %U
-Icon=pericode
-Type=Application
-Categories=Development;IDE;
-Terminal=false
-EOF
+# Option 2: Build from source (see below)
 ```
 
 ---
@@ -161,9 +99,15 @@ EOF
 ## Building from Source
 
 ### Prerequisites
-- Node.js 18+
-- npm 9+
+- [Rust](https://rustup.rs/) (stable)
+- Node.js 20+
+- [pnpm](https://pnpm.io/) 9+
 - Git
+- **Linux only:** system libraries for Tauri
+  ```bash
+  # Debian/Ubuntu
+  sudo apt-get install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libsoup-3.0-dev
+  ```
 
 ### Steps
 
@@ -173,25 +117,28 @@ git clone https://github.com/cucapcosta/pericode.git
 cd pericode
 
 # Install dependencies
-npm install
+pnpm install
 
 # Run in development mode
-npm start
+pnpm tauri dev
 
 # Build for production
-npm run make
+pnpm tauri build
 ```
 
-The built application will be in the `out/` directory.
+The built application will be in `src-tauri/target/release/bundle/`.
 
 ### Build commands
 
 | Command | Description |
 |---------|-------------|
-| `npm start` | Start in development mode with hot reload |
-| `npm run build` | Type-check TypeScript |
-| `npm run package` | Package the app (no installer) |
-| `npm run make` | Create distributable installers |
+| `pnpm tauri dev` | Start in development mode with hot reload |
+| `pnpm build` | Type-check TypeScript and build frontend |
+| `pnpm tauri build` | Build distributable desktop bundles |
+| `pnpm test` | Run tests |
+| `pnpm lint` | Lint TypeScript |
+| `pnpm version:sync X.X.X` | Sync version across all manifests |
+| `pnpm release X.X.X` | Bump version, commit, and tag for release |
 
 ---
 
@@ -263,27 +210,31 @@ Access via the settings icon in the sidebar:
 
 ```
 pericode/
-├── electron/           # Main process (Node.js)
-│   ├── ipc/           # IPC handlers
-│   ├── services/      # Business logic
-│   └── utils/         # Utilities
-├── src/               # Renderer process (React)
+├── src-tauri/          # Tauri backend (Rust)
+│   ├── src/
+│   │   ├── commands/  # IPC command handlers
+│   │   ├── services/  # Business logic
+│   │   ├── db/        # SQLite database layer
+│   │   └── utils/     # Utilities
+│   └── tauri.conf.json
+├── src/                # Frontend (React)
 │   ├── components/    # UI components
 │   ├── stores/        # Zustand state
-│   └── lib/           # Utilities
-├── arch/              # Arch Linux packaging
-└── .github/workflows/ # CI/CD
+│   ├── hooks/         # React hooks
+│   └── lib/           # IPC client, utilities
+├── scripts/            # Release & version scripts
+└── .github/workflows/  # CI/CD
 ```
 
 ### Architecture
 
 ```
-React UI → IPC (preload.ts) → Main Process → Services → Claude CLI
+React UI → IPC (Tauri invoke) → Rust Backend → Services → Claude CLI
 ```
 
 - **Frontend**: React + TypeScript + Tailwind CSS + Zustand
-- **Backend**: Electron + Node.js + SQLite
-- **CLI Integration**: Spawns `claude -p` with `--output-format stream-json`
+- **Backend**: Tauri 2.0 + Rust + SQLite (rusqlite)
+- **CLI Integration**: Spawns Claude via portable-pty
 
 ---
 
@@ -306,6 +257,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [Claude](https://claude.ai) by Anthropic
-- [Electron](https://electronjs.org)
+- [Tauri](https://tauri.app)
 - [React](https://react.dev)
 - [Tailwind CSS](https://tailwindcss.com)

@@ -149,7 +149,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     msgs.set(threadId, [...existing, userMsg]);
     set({ messages: msgs });
 
-    await ipc.invoke("agent:sendMessage", threadId, message, imagePaths);
+    try {
+      await ipc.invoke("agent:sendMessage", threadId, message, imagePaths);
+    } catch (err) {
+      // Surface error to the UI so the user knows the send failed
+      const errors = new Map(get().errors);
+      errors.set(threadId, String(err));
+      set({ errors });
+    }
   },
 
   respondPermission: async (threadId: string, requestId: string, allow: boolean, message?: string) => {

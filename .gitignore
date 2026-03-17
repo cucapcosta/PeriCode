@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 .vite/
+src-tauri/target/
 *.js.map
 *.d.ts.map
 coverage/
