@@ -143,7 +143,7 @@ function positionalToNamed(channel: string, args: unknown[]): Record<string, unk
 }
 
 // Track active listeners for cleanup
-const activeListeners: Map<string, Map<Function, UnlistenFn>> = new Map();
+const activeListeners: Map<string, Map<(...args: unknown[]) => unknown, UnlistenFn>> = new Map();
 
 /**
  * Type-safe IPC client for renderer process.
