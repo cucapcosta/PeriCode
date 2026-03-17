@@ -6,12 +6,14 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}", "electron/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      "@electron": path.resolve(__dirname, "electron"),
     },
+  },
+  define: {
+    __CI_BUILD__: JSON.stringify(false),
   },
 });

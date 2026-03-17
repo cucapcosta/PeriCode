@@ -326,6 +326,32 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 Command to run with /build. Runs in project directory.
               </p>
             </div>
+
+            {/* Publish Command */}
+            <div>
+              <label
+                htmlFor="publishCommand"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Publish Command
+              </label>
+              <input
+                id="publishCommand"
+                type="text"
+                value={settings.publishCommand || ""}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    publishCommand: e.target.value || undefined,
+                  })
+                }
+                placeholder="pnpm release {version}"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Command to run with /publish. Use {"{version}"} as placeholder.
+              </p>
+            </div>
           </div>
         </div>
 

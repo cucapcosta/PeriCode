@@ -463,22 +463,26 @@ export const ThreadView: React.FC = () => {
         break;
       }
       case "publish": {
-        if (!activeProjectId) return;
-        // If no version, prompt for one
-        if (!versionInput.trim()) {
+        if (!activeProject?.path) return;
+        const publishCommand = activeProject.settings?.publishCommand;
+        if (!publishCommand) {
+          setGitOutput({ type: "publish", success: false, message: "No publish command configured. Set it in Project Settings." });
+          return;
+        }
+        // If command uses {version} placeholder, prompt for version first
+        if (publishCommand.includes("{version}") && !versionInput.trim()) {
           setGitOutput({ type: "publish", success: false, message: "Enter the version to publish (e.g., 0.4, 0.4.1, 1.0.0):" });
           return;
         }
-        setGitOutput({ type: "publish", success: true, message: `Publishing version ${versionInput}...\n\nThis will:\n1. Update package.json version\n2. Update Sidebar display version\n3. Stage and commit changes\n4. Push to remote\n5. Create and push version tag\n6. Trigger GitHub Actions release workflow` });
+        const finalCommand = publishCommand.replace(/\{version\}/g, versionInput.trim());
+        setGitOutput({ type: "publish", success: true, message: `Running: ${finalCommand}...` });
         try {
-          const result = await ipc.invoke("git:publish", activeProjectId, versionInput.trim());
+          const result = await ipc.invoke("command:build", activeProject.path, finalCommand);
           if (result.success) {
-            const stepsOutput = result.steps.map(s => `${s.success ? "✓" : "✗"} ${s.step}: ${s.message}`).join("\n");
-            setGitOutput({ type: "publish", success: true, message: `Release v${versionInput.trim()} published!\n\n${stepsOutput}\n\n🚀 GitHub Actions will now build and create the release.` });
+            setGitOutput({ type: "publish", success: true, message: `Publish complete!\n\n${result.stdout || result.stderr}` });
             setVersionInput("");
           } else {
-            const stepsOutput = result.steps.map(s => `${s.success ? "✓" : "✗"} ${s.step}: ${s.message}`).join("\n");
-            setGitOutput({ type: "publish", success: false, message: `${result.error}\n\n${stepsOutput}` });
+            setGitOutput({ type: "publish", success: false, message: `Publish failed (exit ${result.exitCode}):\n\n${result.stderr || result.stdout}` });
           }
         } catch (err) {
           setGitOutput({ type: "publish", success: false, message: `Error: ${err}` });
