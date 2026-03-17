@@ -479,10 +479,10 @@ export const ThreadView: React.FC = () => {
         try {
           const result = await ipc.invoke("command:build", activeProject.path, finalCommand);
           if (result.success) {
-            setGitOutput({ type: "publish", success: true, message: `Publish complete!\n\n${result.stdout || result.stderr}` });
+            setGitOutput({ type: "publish", success: true, message: `Publish complete!\n\n${result.output}` });
             setVersionInput("");
           } else {
-            setGitOutput({ type: "publish", success: false, message: `Publish failed (exit ${result.exitCode}):\n\n${result.stderr || result.stdout}` });
+            setGitOutput({ type: "publish", success: false, message: `Publish failed:\n\n${result.output}` });
           }
         } catch (err) {
           setGitOutput({ type: "publish", success: false, message: `Error: ${err}` });
