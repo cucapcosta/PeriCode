@@ -15,6 +15,14 @@ Object.defineProperty(window, "matchMedia", {
   })),
 });
 
+// Mock Tauri event plugin internals (used by @tauri-apps/api/event for unlisten)
+Object.defineProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__", {
+  writable: true,
+  value: {
+    unregisterListener: vi.fn(),
+  },
+});
+
 // Mock Tauri internals for test environment
 Object.defineProperty(window, "__TAURI_INTERNALS__", {
   writable: true,

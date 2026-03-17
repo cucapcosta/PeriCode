@@ -143,7 +143,8 @@ function positionalToNamed(channel: string, args: unknown[]): Record<string, unk
 }
 
 // Track active listeners for cleanup
-const activeListeners: Map<string, Map<(...args: unknown[]) => unknown, UnlistenFn>> = new Map();
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+const activeListeners = new Map<string, Map<Function, UnlistenFn>>();
 
 /**
  * Type-safe IPC client for renderer process.

@@ -1,6 +1,6 @@
 {
   "name": "pericode",
-  "version": "0.8.0",
+  "version": "0.1.0",
   "description": "A multi-agent command center desktop app",
   "scripts": {
     "dev": "vite",

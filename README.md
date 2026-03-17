@@ -1,262 +1,230 @@
+> **[English version](README.en.md)**
+
 # PeriCode
 
-Uma ferramenta periquitante para desenvolvimento com Claude.
+Command center multi-agente para desenvolvimento com IA.
 
-PeriCode is a multi-agent command center that wraps the Claude Code CLI in a Tauri desktop application, providing a visual interface for managing AI-assisted development workflows.
+PeriCode é uma aplicação desktop que envolve o Claude Code CLI em uma interface visual completa, permitindo gerenciar múltiplos agentes de IA simultaneamente em diferentes projetos.
+
+## Sobre
+
+PeriCode transforma o Claude Code CLI em um ambiente visual de desenvolvimento assistido por IA. Em vez de gerenciar sessões de terminal individualmente, você tem um painel de controle centralizado com múltiplas threads, projetos e ferramentas integradas.
 
 ## Features
 
-- **Multi-thread conversations** - Run multiple Claude agents simultaneously
-- **Project management** - Organize work across different codebases
-- **Git integration** - Built-in git commands (`/status`, `/commit`, `/push`, `/pull`, `/checkout`, `/branch`, `/publish`)
-- **Skill system** - Import and use custom skills from local files or Git repositories
-- **Image support** - Paste or drag-and-drop images into conversations
-- **Cost tracking** - Monitor token usage and costs per conversation
-- **Diff viewer** - Review code changes with GitHub-style unified diffs
-- **Worktree isolation** - Run agents in isolated git worktrees
+- **Multi-thread** - Execute múltiplos agentes Claude simultaneamente em threads independentes
+- **Gerenciamento de projetos** - Organize trabalho em diferentes codebases
+- **Git integrado** - Comandos git nativos: `/status`, `/commit`, `/push`, `/pull`, `/checkout`, `/branch`, `/publish`
+- **Sistema de skills** - Prompts reutilizáveis com sintaxe `$skill-name`, importação de repositórios Git
+- **Suporte a imagens** - Paste (Ctrl+V), drag-and-drop e file picker
+- **Rastreamento de custos** - Monitore tokens e custos por conversa
+- **Diff viewer** - Diffs unificados estilo GitHub para revisar mudanças
+- **Worktree isolation** - Execute agentes em worktrees git isolados
+- **Automações** - Tarefas agendadas com cron, file watch e git events
+- **Terminal embutido** - Terminal xterm.js integrado na aplicação
+- **Multi-provider** - Suporte a Claude e GitHub Copilot
+- **Command palette** - Cmd+K / Ctrl+K para navegação rápida
+- **Dashboard** - Monitoramento de todos os agentes ativos
 
 ## Screenshots
 
-<!-- Add screenshots here -->
+<!-- TODO: Adicionar screenshots -->
 
-## Requirements
+## Requisitos
 
-- **Claude CLI** - Must be installed and authenticated
+- **Claude CLI** instalado e autenticado
   ```bash
-  # Install Claude CLI
   npm install -g @anthropic-ai/claude-code
-
-  # Authenticate
   claude auth
   ```
 
-## Installation
+## Instalação
 
 ### Windows
 
-**Option 1: NSIS Installer (recommended)**
-1. Download `PeriCode_X.X.X_x64-setup.exe` from [Releases](https://github.com/cucapcosta/pericode/releases)
-2. Run the installer
-3. Launch PeriCode from Start Menu
+**NSIS Installer (recomendado):**
+1. Baixe `PeriCode_X.X.X_x64-setup.exe` em [Releases](https://github.com/cucapcosta/pericode/releases)
+2. Execute o instalador
+3. Abra o PeriCode pelo Menu Iniciar
 
-**Option 2: MSI Installer**
-1. Download `PeriCode_X.X.X_x64_en-US.msi` from [Releases](https://github.com/cucapcosta/pericode/releases)
-2. Run the `.msi` installer
-3. Launch PeriCode from Start Menu
-
----
-
-### macOS
-
-> macOS builds are not currently available via CI. See [Building from Source](#building-from-source) below.
-
----
+**MSI Installer:**
+1. Baixe `PeriCode_X.X.X_x64_en-US.msi` em [Releases](https://github.com/cucapcosta/pericode/releases)
+2. Execute o `.msi`
 
 ### Linux
 
-#### Debian / Ubuntu
+**Debian / Ubuntu:**
 ```bash
-# Download the .deb package
-wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/pericode_X.X.X_amd64.deb
-
-# Install
 sudo dpkg -i pericode_X.X.X_amd64.deb
-
-# Fix dependencies if needed
-sudo apt-get install -f
+sudo apt-get install -f  # corrigir dependências se necessário
 ```
 
-#### Fedora / RHEL / CentOS
+**Fedora / RHEL:**
 ```bash
-# Download the .rpm package
-wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/pericode-X.X.X-1.x86_64.rpm
-
-# Install
 sudo rpm -i pericode-X.X.X-1.x86_64.rpm
-# or with dnf
-sudo dnf install pericode-X.X.X-1.x86_64.rpm
 ```
 
-#### AppImage (any distro)
+**AppImage (qualquer distro):**
 ```bash
-# Download the AppImage
-wget https://github.com/cucapcosta/pericode/releases/download/vX.X.X/PeriCode_X.X.X_amd64.AppImage
-
-# Make executable and run
 chmod +x PeriCode_X.X.X_amd64.AppImage
 ./PeriCode_X.X.X_amd64.AppImage
 ```
 
-#### Arch Linux
-```bash
-# Option 1: Use the AppImage (see above)
+### macOS
 
-# Option 2: Build from source (see below)
-```
+> Builds para macOS não estão disponíveis via CI. Veja [Build from Source](#build-from-source).
 
----
+## Build from Source
 
-## Building from Source
-
-### Prerequisites
+### Pré-requisitos
 - [Rust](https://rustup.rs/) (stable)
 - Node.js 20+
 - [pnpm](https://pnpm.io/) 9+
 - Git
-- **Linux only:** system libraries for Tauri
+- **Linux:** bibliotecas de sistema para Tauri
   ```bash
   # Debian/Ubuntu
   sudo apt-get install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libsoup-3.0-dev
   ```
 
-### Steps
+### Passos
 
 ```bash
-# Clone the repository
 git clone https://github.com/cucapcosta/pericode.git
 cd pericode
-
-# Install dependencies
 pnpm install
 
-# Run in development mode
+# Modo desenvolvimento (com hot reload)
 pnpm tauri dev
 
-# Build for production
+# Build de produção
 pnpm tauri build
 ```
 
-The built application will be in `src-tauri/target/release/bundle/`.
+Os binários serão gerados em `src-tauri/target/release/bundle/`.
 
-### Build commands
+## Uso
 
-| Command | Description |
-|---------|-------------|
-| `pnpm tauri dev` | Start in development mode with hot reload |
-| `pnpm build` | Type-check TypeScript and build frontend |
-| `pnpm tauri build` | Build distributable desktop bundles |
-| `pnpm test` | Run tests |
-| `pnpm lint` | Lint TypeScript |
-| `pnpm version:sync X.X.X` | Sync version across all manifests |
-| `pnpm release X.X.X` | Bump version, commit, and tag for release |
+### Primeiros passos
 
----
-
-## Usage
-
-### Getting Started
-
-1. Launch PeriCode
-2. Click "Add Project" in the sidebar
-3. Select a folder containing your code
-4. Create a new thread to start a conversation with Claude
+1. Abra o PeriCode
+2. Clique em "Add Project" na sidebar
+3. Selecione a pasta do seu código
+4. Crie uma nova thread para conversar com o Claude
 
 ### Slash Commands
 
-Type `/` in the chat input to see available commands:
+Digite `/` no input para ver os comandos disponíveis:
 
-| Command | Description |
-|---------|-------------|
-| `/code` | Open project in VS Code |
-| `/build` | Run project build command |
-| `/rebuild` | Rebuild and restart PeriCode |
-| `/status` | Show git status |
-| `/add` | Stage all changes |
-| `/commit` | Commit staged changes |
-| `/push` | Push to remote |
-| `/pull` | Pull from remote |
-| `/checkout` | Switch branch |
-| `/branch` | List branches |
-| `/publish` | Publish a new release |
+| Comando | Descrição |
+|---------|-----------|
+| `/code` | Abrir projeto no VS Code |
+| `/build` | Executar comando de build |
+| `/rebuild` | Rebuild e reiniciar o PeriCode |
+| `/status` | Mostrar git status |
+| `/add` | Stage todas as mudanças |
+| `/commit` | Commit das mudanças staged |
+| `/push` | Push para o remote |
+| `/pull` | Pull do remote |
+| `/checkout` | Trocar de branch |
+| `/branch` | Listar branches |
+| `/publish` | Publicar uma nova release |
 
 ### Skills
 
-Reference skills in your messages using `$skill-name` syntax. Skills are reusable prompts that can be:
-- Imported from Git repositories
-- Created locally in the Skills tab
-- Shared across projects
+Referencie skills nas mensagens usando a sintaxe `$skill-name`. Skills são prompts reutilizáveis que podem ser:
+- Importados de repositórios Git
+- Criados localmente na aba Skills
+- Compartilhados entre projetos
 
-### Images
+### Imagens
 
-- **Paste**: Ctrl+V to paste from clipboard
-- **Drag & Drop**: Drag images into the chat
-- **Pick**: Click the image button to select files
+- **Paste:** Ctrl+V para colar da área de transferência
+- **Drag & Drop:** Arraste imagens para o chat
+- **Pick:** Clique no botão de imagem para selecionar arquivos
 
----
+### Automações
 
-## Configuration
+Configure tarefas automáticas:
+- **Cron:** Agende execuções com expressões cron
+- **File Watch:** Reaja a mudanças em arquivos
+- **Git Events:** Dispare ações em eventos git
 
-### Project Settings
+## Configuração
 
-Each project can have custom settings:
-- **Model**: Default Claude model to use
-- **Build Command**: Command for `/build` (e.g., `npm run build`)
-- **System Prompt**: Custom instructions for the agent
-- **Allowed Tools**: Restrict which tools the agent can use
+### Settings do Projeto
 
-### Application Settings
+Cada projeto pode ter configurações próprias:
+- **Model:** Modelo Claude padrão
+- **Build Command:** Comando para `/build` (ex: `npm run build`)
+- **System Prompt:** Instruções customizadas para o agente
+- **Allowed Tools:** Restringir ferramentas disponíveis
 
-Access via the settings icon in the sidebar:
-- Theme (light/dark/system)
-- Default model
-- Permission mode
-- Log level
+### Settings da Aplicação
 
----
+Acesse pelo ícone de configurações na sidebar:
+- Tema (light/dark/system)
+- Modelo padrão
+- Modo de permissão
+- Nível de log
 
-## Development
-
-### Project Structure
-
-```
-pericode/
-├── src-tauri/          # Tauri backend (Rust)
-│   ├── src/
-│   │   ├── commands/  # IPC command handlers
-│   │   ├── services/  # Business logic
-│   │   ├── db/        # SQLite database layer
-│   │   └── utils/     # Utilities
-│   └── tauri.conf.json
-├── src/                # Frontend (React)
-│   ├── components/    # UI components
-│   ├── stores/        # Zustand state
-│   ├── hooks/         # React hooks
-│   └── lib/           # IPC client, utilities
-├── scripts/            # Release & version scripts
-└── .github/workflows/  # CI/CD
-```
-
-### Architecture
+## Arquitetura
 
 ```
 React UI → IPC (Tauri invoke) → Rust Backend → Services → Claude CLI
 ```
 
-- **Frontend**: React + TypeScript + Tailwind CSS + Zustand
-- **Backend**: Tauri 2.0 + Rust + SQLite (rusqlite)
-- **CLI Integration**: Spawns Claude via portable-pty
+- **Frontend:** React 19 + TypeScript + Tailwind CSS + Zustand
+- **Backend:** Tauri 2.0 + Rust + SQLite (rusqlite)
+- **CLI:** Integração com Claude via portable-pty
 
----
+## Estrutura do Projeto
 
-## Contributing
+```
+pericode/
+├── src/                    # Frontend (React)
+│   ├── components/         # Componentes UI
+│   ├── stores/             # Estado com Zustand
+│   ├── hooks/              # React hooks
+│   └── lib/                # IPC client, utilitários
+├── src-tauri/              # Backend (Rust)
+│   ├── src/
+│   │   ├── commands/       # Handlers de comandos IPC
+│   │   ├── services/       # Lógica de negócio
+│   │   ├── db/             # Camada de banco SQLite
+│   │   └── utils/          # Utilitários
+│   └── tauri.conf.json
+├── scripts/                # Scripts de release e versão
+└── .github/workflows/      # CI/CD
+```
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Comandos de Desenvolvimento
 
----
+| Comando | Descrição |
+|---------|-----------|
+| `pnpm tauri dev` | Modo desenvolvimento com hot reload |
+| `pnpm build` | Type-check TypeScript e build do frontend |
+| `pnpm tauri build` | Build dos binários distribuíveis |
+| `pnpm test` | Rodar testes |
+| `pnpm lint` | Lint do TypeScript |
+| `pnpm version:sync X.X.X` | Sincronizar versão em todos os manifestos |
+| `pnpm release X.X.X` | Bump de versão, commit e preparar release |
 
-## License
+## Contribuição
 
-MIT License - see [LICENSE](LICENSE) for details.
+1. Fork o repositório
+2. Crie uma branch para a feature (`git checkout -b feature/nova-feature`)
+3. Commit suas mudanças (`git commit -m 'Adiciona nova feature'`)
+4. Push para a branch (`git push origin feature/nova-feature`)
+5. Abra um Pull Request
 
----
+## Licença
 
-## Acknowledgments
+MIT License - veja [LICENSE](LICENSE) para detalhes.
 
-- [Claude](https://claude.ai) by Anthropic
+## Agradecimentos
+
+- [Claude](https://claude.ai) por Anthropic
 - [Tauri](https://tauri.app)
 - [React](https://react.dev)
 - [Tailwind CSS](https://tailwindcss.com)
