@@ -147,50 +147,38 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Extract release notes from PR
+        id: release_notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the most recent merged PR to main.
+          # gh output is safe — piped through node, never interpolated in shell.
+          PR_JSON=$(gh pr list --base main --state merged --limit 1 --json body,title)
+          PR_TITLE=$(echo "$PR_JSON" | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'))[0]?.title || ''")
+          PR_BODY=$(echo "$PR_JSON" | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'))[0]?.body || ''")
+
+          # Try to extract notes between markers
+          NOTES=$(echo "$PR_BODY" | sed -n '/<!-- RELEASE_NOTES_START -->/,/<!-- RELEASE_NOTES_END -->/{ /<!-- RELEASE_NOTES/d; p; }' | sed '/^$/d')
+
+          # Fallback: use full PR body, then title
+          if [ -z "$NOTES" ] || echo "$NOTES" | grep -qE '^\s*$'; then
+            if [ -n "$PR_BODY" ]; then
+              NOTES="$PR_BODY"
+            else
+              NOTES="$PR_TITLE"
+            fi
+          fi
+
+          # Write to file for the next step (avoids shell interpolation)
+          echo "$NOTES" > /tmp/release_notes.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: PeriCode ${{ steps.version.outputs.version }}
-          body: |
-            ## PeriCode ${{ steps.version.outputs.version }}
-
-            Uma ferramenta periquitante para desenvolvimento com Claude.
-
-            ### Downloads
-
-            | Platform | Architecture | File |
-            |----------|--------------|------|
-            | Windows | x64 | `.exe` (NSIS) / `.msi` |
-            | Linux | x64 | `.deb` / `.rpm` / `.AppImage` |
-
-            ### Installation
-
-            **Windows:** Run the `.exe` or `.msi` installer
-
-            **Linux (Debian/Ubuntu):** `sudo dpkg -i pericode_*.deb`
-
-            **Linux (Fedora/RHEL):** `sudo rpm -i pericode-*.rpm`
-
-            **Linux (AppImage):**
-            ```bash
-            chmod +x PeriCode_*.AppImage
-            ./PeriCode_*.AppImage
-            ```
-
-            **Linux (Arch):**
-            ```bash
-            # Option 1: Use PKGBUILD (see arch/PKGBUILD in repo)
-            cd arch && makepkg -si
-
-            # Option 2: Extract AppImage
-            chmod +x PeriCode_*.AppImage && ./PeriCode_*.AppImage
-            ```
-
-            ### Requirements
-
-            - Claude CLI must be installed and authenticated
-
+          body_path: /tmp/release_notes.md
           files: release-files/*
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}

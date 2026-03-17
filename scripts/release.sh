@@ -22,12 +22,14 @@ bash "$SCRIPT_DIR/version-sync.sh" "$VERSION"
 # Update Cargo.lock
 cd src-tauri && cargo check --quiet 2>/dev/null && cd ..
 
-# Commit and tag
+# Commit
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
 git commit -m "Release v${VERSION}"
-git tag "v${VERSION}"
 
 echo ""
-echo "Release v${VERSION} created locally."
-echo "Push to trigger CI/CD:"
-echo "  git push origin main --tags"
+echo "Release v${VERSION} committed."
+echo "Next steps:"
+echo "  1. git push origin develop"
+echo "  2. Open a PR from develop → main"
+echo "  3. Fill in the Release Notes section in the PR template"
+echo "  4. Merge the PR — CI will create the tag and release automatically"
